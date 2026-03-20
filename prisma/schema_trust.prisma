@@ -1,0 +1,15 @@
+
+// Trust System
+model TrustVote {
+  id        BigInt   @id @default(autoincrement())
+  voterId   String   @map("voter_id") @db.Char(36)
+  targetId  String   @map("target_id") @db.Char(36)
+  type      String   @db.VarChar(20) // 'TRUST' or 'DISTRUST'
+  createdAt DateTime @default(now()) @map("created_at")
+
+  voter  Profile @relation("TrustVoter", fields: [voterId], references: [id], onDelete: Cascade)
+  target Profile @relation("TrustTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([voterId, targetId])
+  @@map("trust_votes")
+}

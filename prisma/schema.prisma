@@ -1,0 +1,659 @@
+// Prisma Schema para MySQL
+// Database: MySQL 8.0+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// TABELAS PRINCIPAIS
+// ============================================
+
+model Profile {
+  id                String    @id @default(uuid()) @db.Char(36)
+  email             String?   @unique
+  username          String?
+  walletAddress     String?   @unique @map("wallet_address") @db.VarChar(255)
+  primaryAuthMethod String    @default("discord") @map("primary_auth_method") @db.VarChar(50)
+  walletLinkedAt    DateTime? @map("wallet_linked_at")
+
+  // Discord
+  discordId         String? @map("discord_id") @db.VarChar(255)
+  discordUsername   String? @map("discord_username") @db.VarChar(255)
+  discordGlobalName String? @map("discord_global_name") @db.VarChar(255)
+
+  // Perfil
+  bio       String? @db.Text
+  avatarUrl String? @map("avatar_url") @db.VarChar(500)
+  isPrivate Boolean @default(false) @map("is_private")
+  role      String  @default("user") @db.VarChar(50)
+
+  // Reputation & Security
+  reputationScore  Int       @default(0) @map("reputation_score")
+  discordCreatedAt DateTime? @map("discord_created_at")
+
+  // Créditos
+  credits Decimal @default(10.00) @db.Decimal(10, 2)
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relações
+  walletLogins          WalletLogin[]
+  guildMembers          GuildMember[]
+  guildRequests         GuildRequest[]
+  guildsOwned           Guild[]                @relation("GuildOwner")
+  creditTransactions    CreditTransaction[]
+  creditRequests        CreditRequest[]
+  gameItems             GameItem[]
+  guildAuctions         GuildAuction[]         @relation("AuctionWinner")
+  guildBids             GuildBid[]
+  dkpLedger             GuildDkpLedger[]
+  messages              Message[]              @relation("MessageSender")
+  conversations         Conversation[]         @relation("ConversationBuyer")
+  conversations2        Conversation[]         @relation("ConversationSeller")
+  marketAds             MarketAd[]
+  adReports             AdReport[]
+  gameVotes             GameVote[]
+  characterShares       GuildCharacterShare[]  @relation("CharacterShareOwner")
+  characterShares2      GuildCharacterShare[]  @relation("CharacterSharePilot")
+  itemFavorites         UserItemFavorite[]
+  trustVotesCast        TrustVote[]            @relation("TrustVoter")
+  trustVotesReceived    TrustVote[]            @relation("TrustTarget")
+  creditRequestMessages CreditRequestMessage[]
+  supportTickets        SupportTicket[]
+  supportMessages       SupportTicketMessage[]
+  gameComments          GameComment[]
+  gameCommentVotes      GameCommentVote[]
+  eventsOrganized       Event[]                @relation("EventOrganizer")
+
+  @@map("profiles")
+}
+
+model WalletLogin {
+  id            BigInt   @id @default(autoincrement())
+  walletAddress String   @unique @map("wallet_address") @db.VarChar(255)
+  userId        String   @map("user_id") @db.Char(36)
+  createdAt     DateTime @default(now()) @map("created_at")
+  lastLoginAt   DateTime @default(now()) @updatedAt @map("last_login_at")
+
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([walletAddress])
+  @@index([userId])
+  @@map("wallet_logins")
+}
+
+model Guild {
+  id           BigInt  @id @default(autoincrement())
+  name         String  @db.VarChar(255)
+  description  String? @db.Text
+  maxMembers   Int     @default(50) @map("max_members")
+  membersCount Int     @default(0) @map("members_count")
+  discordUrl   String? @map("discord_url") @db.VarChar(500)
+  imageUrl     String? @map("image_url") @db.VarChar(500)
+  gameId       BigInt? @map("game_id")
+  ownerAddress String  @map("owner_address") @db.VarChar(255)
+  ownerId      String? @map("owner_id") @db.Char(36)
+
+  // Security
+  strikes      Int     @default(0)
+
+  // Créditos
+  accessExpiresAt  DateTime? @map("access_expires_at")
+  creationCostPaid Boolean   @default(false) @map("creation_cost_paid")
+
+  // DKP Configuration
+  dkpConfig        Json?   @default("{}") @map("dkp_config") @db.Json
+  dkpDecayActive   Boolean @default(false) @map("dkp_decay_active")
+  dkpDecayPercent  Int?    @default(0) @map("dkp_decay_percent")
+  dkpDecayInterval String? @default("weekly") @map("dkp_decay_interval") @db.VarChar(50)
+  dkpDecayDay      Int?    @default(1) @map("dkp_decay_day")
+  dkpRoleBonuses   Json?   @default("{}") @map("dkp_role_bonuses") @db.Json
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relações
+  owner           Profile?               @relation("GuildOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  game            Game?                  @relation(fields: [gameId], references: [id], onDelete: SetNull)
+  members         GuildMember[]
+  requests        GuildRequest[]
+  auctions        GuildAuction[]
+  customFields    GuildCustomField[]
+  dkpEventsConfig GuildDkpEventsConfig[]
+  dkpLedger       GuildDkpLedger[]
+  giveaways       GuildGiveaway[]
+  characterShares GuildCharacterShare[]
+
+  @@index([gameId])
+  @@index([ownerId])
+  @@map("guilds")
+}
+
+model GuildMember {
+  id       String   @id @default(uuid()) @db.Char(36)
+  guildId  BigInt   @map("guild_id")
+  memberId String   @map("member_id") @db.Char(36)
+  role     String   @default("member") @db.VarChar(50)
+  joinedAt DateTime @default(now()) @map("joined_at")
+
+  // DKP
+  dkpBalance Decimal @default(0) @map("dkp_balance") @db.Decimal(10, 2)
+
+  // Character Info
+  characterName  String? @map("character_name") @db.VarChar(255)
+  characterClass String? @map("character_class") @db.VarChar(255)
+  characterLevel Int?    @map("character_level")
+  powerScore     Int?    @map("power_score")
+  codexScore     Int?    @map("codex_score")
+  customValues   Json?   @default("{}") @map("custom_values") @db.Json
+
+  // Relações
+  guild  Guild   @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  member Profile @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, memberId])
+  @@index([guildId])
+  @@index([memberId])
+  @@map("guild_members")
+}
+
+model GuildRequest {
+  id        String   @id @default(uuid()) @db.Char(36)
+  guildId   BigInt   @map("guild_id")
+  userId    String   @map("user_id") @db.Char(36)
+  status    String   @default("pending") @db.VarChar(50)
+  
+  // Application Data
+  characterName String? @map("character_name") @db.VarChar(255)
+  customValues  Json?   @default("{}") @map("custom_values") @db.Json
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  guild Guild   @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  user  Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, userId])
+  @@index([guildId])
+  @@index([userId])
+  @@map("guild_requests")
+}
+
+model GuildCustomField {
+  id         String   @id @default(uuid()) @db.Char(36)
+  guildId    BigInt   @map("guild_id")
+  fieldName  String   @map("field_name") @db.VarChar(255)
+  fieldType  String   @default("text") @map("field_type") @db.VarChar(50)
+  isRequired Boolean  @default(false) @map("is_required")
+  fieldOrder Int?     @default(0) @map("field_order")
+  options    Json?    @default("[]") @db.Json // Usado para fieldType 'select'
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId])
+  @@map("guild_custom_fields")
+}
+
+model GameItem {
+  id          String   @id @default(uuid()) @db.Char(36)
+  game        String   @db.VarChar(255)
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
+  imageUrl    String?  @map("image_url") @db.VarChar(500)
+  createdBy   String?  @map("created_by") @db.Char(36)
+  rarity      String?  @db.VarChar(50)
+  itemType    String?  @map("item_type") @db.VarChar(50)
+  isNft       Boolean  @default(false) @map("is_nft")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  creator   Profile?           @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  auctions  GuildAuction[]
+  favorites UserItemFavorite[]
+
+  @@unique([game, name])
+  @@index([game])
+  @@index([name])
+  @@map("game_items")
+}
+
+model GuildAuction {
+  id                String    @id @default(uuid()) @db.Char(36)
+  guildId           BigInt    @map("guild_id")
+  itemId            String    @map("item_id") @db.Char(36)
+  quantity          Int       @default(1)
+  status            String    @default("warehouse") @db.VarChar(50)
+  startingBid       Decimal   @default(0) @map("starting_bid") @db.Decimal(10, 2)
+  currentBid        Decimal   @default(0) @map("current_bid") @db.Decimal(10, 2)
+  minBidIncrement   Decimal   @default(0) @map("min_bid_increment") @db.Decimal(10, 2)
+  startTime         DateTime? @map("start_time")
+  endTime           DateTime? @map("end_time")
+  antiSnipeDuration Int?      @default(5) @map("anti_snipe_duration")
+  winnerId          String?   @map("winner_id") @db.Char(36)
+  requirements      Json?     @default("{}") @db.Json
+  delivered         Boolean   @default(false)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  guild  Guild      @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  item   GameItem   @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  winner Profile?   @relation("AuctionWinner", fields: [winnerId], references: [id], onDelete: SetNull)
+  bids   GuildBid[]
+
+  @@index([guildId, status])
+  @@index([itemId])
+  @@map("guild_auctions")
+}
+
+model GuildBid {
+  id        String   @id @default(uuid()) @db.Char(36)
+  auctionId String   @map("auction_id") @db.Char(36)
+  bidderId  String   @map("bidder_id") @db.Char(36)
+  amount    Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  auction GuildAuction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidder  Profile      @relation(fields: [bidderId], references: [id], onDelete: Cascade)
+
+  @@index([auctionId])
+  @@index([bidderId])
+  @@map("guild_bids")
+}
+
+model GuildDkpEventsConfig {
+  id        String   @id @default(uuid()) @db.Char(36)
+  guildId   BigInt   @map("guild_id")
+  eventName String   @map("event_name") @db.VarChar(255)
+  dkpAmount Decimal @default(0) @map("dkp_amount") @db.Decimal(10, 2)
+  
+  // Recurrence
+  recurrence     String   @default("once") @db.VarChar(50) // 'once', 'daily', 'weekly', 'monthly'
+  recurrenceDays String?  @map("recurrence_days") @db.VarChar(255) // For weekly: "0,1,2", for monthly: "15"
+  eventTime      String?  @map("event_time") @db.VarChar(10) // HH:mm
+  
+  createdAt DateTime @default(now()) @map("created_at")
+
+  guild  Guild            @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  ledger GuildDkpLedger[]
+
+  @@index([guildId])
+  @@map("guild_dkp_events_config")
+}
+
+model GuildDkpLedger {
+  id          String   @id @default(uuid()) @db.Char(36)
+  guildId     BigInt   @map("guild_id")
+  memberId    String   @map("member_id") @db.Char(36)
+  eventTypeId String?  @map("event_type_id") @db.Char(36)
+  description String?  @db.Text
+  amount      Decimal  @db.Decimal(10, 2)
+  createdBy   String?  @map("created_by") @db.Char(36)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  guild     Guild                 @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  member    Profile               @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  eventType GuildDkpEventsConfig? @relation(fields: [eventTypeId], references: [id], onDelete: SetNull)
+
+  @@index([guildId])
+  @@index([memberId])
+  @@index([createdAt])
+  @@map("guild_dkp_ledger")
+}
+
+model GuildGiveaway {
+  id          String    @id @default(uuid()) @db.Char(36)
+  guildId     BigInt    @map("guild_id")
+  title       String    @db.VarChar(255)
+  description String?   @db.Text
+  itemId      String?   @map("item_id") @db.Char(36)
+  customPrize String?   @map("custom_prize") @db.Text
+  filters     Json?     @default("{}") @db.Json
+  winnerId    String?   @map("winner_id") @db.Char(36)
+  status      String    @default("active") @db.VarChar(50)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId])
+  @@index([status])
+  @@map("guild_giveaways")
+}
+
+model GuildCharacterShare {
+  id               String    @id @default(uuid()) @db.Char(36)
+  guildMemberId    String    @map("guild_member_id") @db.Char(36)
+  sharedWithUserId String    @map("shared_with_user_id") @db.Char(36)
+  permissions      Json?     @default("{}") @db.Json
+  status           String    @default("pending") @db.VarChar(50)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  approvedAt       DateTime? @map("approved_at")
+
+  owner   Profile @relation("CharacterShareOwner", fields: [guildMemberId], references: [id], onDelete: Cascade)
+  pilot   Profile @relation("CharacterSharePilot", fields: [sharedWithUserId], references: [id], onDelete: Cascade)
+  Guild   Guild?  @relation(fields: [guildId], references: [id])
+  guildId BigInt?
+
+  @@index([guildMemberId])
+  @@index([sharedWithUserId])
+  @@map("guild_character_shares")
+}
+
+model Game {
+  id            BigInt   @id @default(autoincrement())
+  name          String   @unique @db.VarChar(255)
+  description   String?  @db.Text
+  details       String?  @db.Text
+  genre         String?  @db.VarChar(100)
+  blockchain    String?  @db.VarChar(255)
+  website       String?  @db.VarChar(500)
+  imageUrl      String?  @map("image_url") @db.VarChar(500)
+  serverRegions Json?    @map("server_regions") @db.Json
+  status        String?  @db.VarChar(50)
+  mode          String?  @db.VarChar(100)
+  requirements  String?  @db.VarChar(500)
+  tokenId       String?  @map("token_id") @db.VarChar(100)
+  likes         Int      @default(0)
+  dislikes      Int      @default(0)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  votes    GameVote[]
+  comments GameComment[]
+  guilds   Guild[]
+
+  @@map("games")
+}
+
+model CreditTransaction {
+  id              BigInt   @id @default(autoincrement())
+  userId          String   @map("user_id") @db.Char(36)
+  amount          Decimal  @db.Decimal(10, 2)
+  balanceAfter    Decimal  @map("balance_after") @db.Decimal(10, 2)
+  transactionType String   @map("transaction_type") @db.VarChar(50)
+  referenceType   String?  @map("reference_type") @db.VarChar(255)
+  referenceId     BigInt?  @map("reference_id")
+  description     String?  @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt(sort: Desc)])
+  @@map("credit_transactions")
+}
+
+model CreditRequest {
+  id         BigInt    @id @default(autoincrement())
+  userId     String    @map("user_id") @db.Char(36)
+  amount     Decimal   @db.Decimal(10, 2)
+  reason     String?   @db.Text
+  status     String    @default("pending") @db.VarChar(50)
+  reviewedBy String?   @map("reviewed_by") @db.Char(36)
+  reviewedAt DateTime? @map("reviewed_at")
+  adminNote  String?   @map("admin_note") @db.Text
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user     Profile                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages CreditRequestMessage[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+  @@map("credit_requests")
+}
+
+model CreditRequestMessage {
+  id              String   @id @default(uuid()) @db.Char(36)
+  creditRequestId BigInt   @map("credit_request_id")
+  senderId        String   @map("sender_id") @db.Char(36)
+  content         String   @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  creditRequest CreditRequest @relation(fields: [creditRequestId], references: [id], onDelete: Cascade)
+  sender        Profile       @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([creditRequestId])
+  @@index([senderId])
+  @@map("credit_request_messages")
+}
+
+model MarketAd {
+  id            BigInt    @id @default(autoincrement())
+  userId        String    @map("user_id") @db.Char(36)
+  title         String    @db.VarChar(255)
+  description   String?   @db.Text
+  price         Decimal?  @db.Decimal(10, 2)
+  currency      String?   @db.VarChar(50)
+  game          String?   @db.VarChar(255)
+  server        String?   @db.VarChar(255)
+  region        String?   @db.VarChar(255)
+  type          String?   @db.VarChar(50)
+  status        String    @default("active") @db.VarChar(50)
+  imageUrl      String?   @map("image_url") @db.VarChar(500)
+  sellerAddress String?   @map("seller_address") @db.VarChar(255)
+  expiresAt     DateTime? @map("expires_at")
+  lastRenewedAt DateTime? @map("last_renewed_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  user    Profile    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reports AdReport[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([game, server, region])
+  @@map("market_ads")
+}
+
+model AdReport {
+  id         String   @id @default(uuid()) @db.Char(36)
+  adId       BigInt   @map("ad_id")
+  reporterId String?  @map("reporter_id") @db.Char(36)
+  reason     String   @db.Text
+  details    String?  @db.Text
+  status     String   @default("pending") @db.VarChar(50)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  ad       MarketAd @relation(fields: [adId], references: [id], onDelete: Cascade)
+  reporter Profile? @relation(fields: [reporterId], references: [id], onDelete: SetNull)
+
+  @@index([adId])
+  @@index([reporterId])
+  @@map("ad_reports")
+}
+
+model Message {
+  id             String   @id @default(uuid()) @db.Char(36)
+  conversationId String   @map("conversation_id") @db.Char(36)
+  senderId       String   @map("sender_id") @db.Char(36)
+  content        String   @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       Profile      @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@map("messages")
+}
+
+model Conversation {
+  id        String   @id @default(uuid()) @db.Char(36)
+  buyerId   String   @map("buyer_id") @db.Char(36)
+  sellerId  String   @map("seller_id") @db.Char(36)
+  adId      BigInt?  @map("ad_id")
+  
+  // Trade Status
+  buyerConfirmed  Boolean @default(false) @map("buyer_confirmed")
+  sellerConfirmed Boolean @default(false) @map("seller_confirmed")
+  isCompleted     Boolean @default(false) @map("is_completed")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  buyer    Profile   @relation("ConversationBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  seller   Profile   @relation("ConversationSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@map("conversations")
+}
+
+model GameVote {
+  id        String   @id @default(uuid()) @db.Char(36)
+  userId    String   @map("user_id") @db.Char(36)
+  gameId    BigInt   @map("game_id")
+  voteType  String   @map("vote_type") @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game Game    @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, gameId])
+  @@index([userId])
+  @@index([gameId])
+  @@map("game_votes")
+}
+
+model UserItemFavorite {
+  id        BigInt   @id @default(autoincrement())
+  userId    String   @map("user_id") @db.Char(36)
+  itemId    String   @map("item_id") @db.Char(36)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item GameItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemId])
+  @@index([userId])
+  @@index([itemId])
+  @@map("user_item_favorites")
+}
+
+// Trust System
+model TrustVote {
+  id        BigInt   @id @default(autoincrement())
+  voterId   String   @map("voter_id") @db.Char(36)
+  targetId  String   @map("target_id") @db.Char(36)
+  type      String   @db.VarChar(20) // 'TRUST' or 'DISTRUST'
+  createdAt DateTime @default(now()) @map("created_at")
+
+  voter  Profile @relation("TrustVoter", fields: [voterId], references: [id], onDelete: Cascade)
+  target Profile @relation("TrustTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([voterId, targetId])
+  @@map("trust_votes")
+}
+
+// Support System
+model SupportTicket {
+  id        String   @id @default(uuid()) @db.Char(36)
+  userId    String   @map("user_id") @db.Char(36)
+  category  String   @db.VarChar(50) // 'bug', 'account', 'billing', 'other'
+  title     String   @db.VarChar(255)
+  status    String   @default("open") @db.VarChar(50) // 'open', 'in_progress', 'resolved', 'closed'
+  priority  String   @default("normal") @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user     Profile                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages SupportTicketMessage[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("support_tickets")
+}
+
+model SupportTicketMessage {
+  id              String   @id @default(uuid()) @db.Char(36)
+  supportTicketId String   @map("support_ticket_id") @db.Char(36)
+  senderId        String   @map("sender_id") @db.Char(36)
+  content         String   @db.Text
+  isInternal      Boolean  @default(false) @map("is_internal") // Messages visible only to admins
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  supportTicket SupportTicket @relation(fields: [supportTicketId], references: [id], onDelete: Cascade)
+  sender        Profile       @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([supportTicketId])
+  @@index([senderId])
+  @@map("support_ticket_messages")
+}
+
+// Game Comments System
+model GameComment {
+  id        String   @id @default(uuid()) @db.Char(36)
+  gameId    BigInt   @map("game_id")
+  userId    String   @map("user_id") @db.Char(36)
+  parentId  String?  @map("parent_id") @db.Char(36)
+  content   String   @db.Text
+  likes     Int      @default(0)
+  dislikes  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  game    Game           @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user    Profile        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent  GameComment?   @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies GameComment[]  @relation("CommentReplies")
+  votes   GameCommentVote[]
+
+  @@index([gameId])
+  @@index([userId])
+  @@index([parentId])
+  @@map("game_comments")
+}
+
+model GameCommentVote {
+  id        String   @id @default(uuid()) @db.Char(36)
+  commentId String   @map("comment_id") @db.Char(36)
+  userId    String   @map("user_id") @db.Char(36)
+  voteType  String   @map("vote_type") @db.VarChar(10) // 'like' or 'dislike'
+  createdAt DateTime @default(now()) @map("created_at")
+
+  comment GameComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user    Profile     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId])
+  @@index([commentId])
+  @@index([userId])
+  @@map("game_comment_votes")
+}
+
+// ============================================
+// EVENTS (NEW FEATURE)
+// ============================================
+
+model Event {
+  id          String   @id @default(uuid()) @db.Char(36)
+  title       String   @db.VarChar(255)
+  description String   @db.Text
+  game        String?  @db.VarChar(255)
+  category    String   @default("other") @db.VarChar(50) // tournament, game_night, meetup, other
+  eventMode   String   @default("online") @map("event_mode") @db.VarChar(20) // online, presencial
+  eventDate   DateTime @map("event_date")
+  location    String?  @db.VarChar(500) // Physical address or online link (Discord/Zoom)
+  prizePool   String?  @map("prize_pool") @db.VarChar(255) // Text field for flexibility (e.g. "$100", "1000 DKP")
+  imageUrl    String?  @map("image_url") @db.VarChar(500)
+  organizerId String   @map("organizer_id") @db.Char(36)
+  
+  status      String   @default("upcoming") @db.VarChar(50) // upcoming, ongoing, completed, cancelled
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  organizer   Profile  @relation("EventOrganizer", fields: [organizerId], references: [id], onDelete: Cascade)
+
+  @@index([organizerId])
+  @@index([eventDate])
+  @@map("events")
+}

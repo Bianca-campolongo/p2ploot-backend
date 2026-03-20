@@ -1,0 +1,20 @@
+--- PROFILES ---
+{"id":"00000000-0000-0000-0000-000000000001","email":"admin@talon.com","username":"Admin","walletAddress":null}
+{"id":"00000000-0000-0000-0000-000000000002","email":"player1@talon.com","username":"PlayerOne","walletAddress":"0x1234567890123456789012345678901234567890"}
+{"id":"00000000-0000-0000-0000-000000000003","email":"player2@talon.com","username":"GamerPro","walletAddress":"0x9876543210987654321098765432109876543210"}
+{"id":"2d88f69c-83d9-4b46-8ac4-5fe411b4d1f6","email":"biacampolongo@gmail.com","username":"Talonzinha","walletAddress":null}
+{"id":"66ea78bf-b6c4-4bf1-9824-c241149d0ad0","email":"bianca.campolongo1@gmail.com","username":"Talonzinha-site","walletAddress":null}
+{"id":"c96d1361-2c71-4b4b-96c8-3d523d98b538","email":"mulherdetalon@gmail.com","username":"Talon mobile","walletAddress":null}
+{"id":"edd8c115-d9f2-4273-a1a7-c36fd5a9dd2f","email":"diego.belarmino@outlook.com","username":"Dieguin","walletAddress":null}
+
+--- GUILDS ---
+{"id":"1","name":"Elite Warriors","ownerId":"00000000-0000-0000-0000-000000000002","ownerAddress":"0x1234567890123456789012345678901234567890"}
+{"id":"2","name":"Crypto Explorers","ownerId":"00000000-0000-0000-0000-000000000003","ownerAddress":"0x9876543210987654321098765432109876543210"}
+{"id":"3","name":"Elite Warriors","ownerId":"00000000-0000-0000-0000-000000000002","ownerAddress":"0x1234567890123456789012345678901234567890"}
+{"id":"4","name":"Crypto Explorers","ownerId":"00000000-0000-0000-0000-000000000003","ownerAddress":"0x9876543210987654321098765432109876543210"}
+{"id":"5","name":"Elite Warriors","ownerId":"00000000-0000-0000-0000-000000000002","ownerAddress":"0x1234567890123456789012345678901234567890"}
+{"id":"6","name":"Crypto Explorers","ownerId":"00000000-0000-0000-0000-000000000003","ownerAddress":"0x9876543210987654321098765432109876543210"}
+{"id":"7","name":"Teste","ownerId":"66ea78bf-b6c4-4bf1-9824-c241149d0ad0","ownerAddress":"66ea78bf-b6c4-4bf1-9824-c241149d0ad0"}
+{"id":"8","name":"assasa","ownerId":"66ea78bf-b6c4-4bf1-9824-c241149d0ad0","ownerAddress":"66ea78bf-b6c4-4bf1-9824-c241149d0ad0"}
+{"id":"9","name":"asassa","ownerId":"66ea78bf-b6c4-4bf1-9824-c241149d0ad0","ownerAddress":"66ea78bf-b6c4-4bf1-9824-c241149d0ad0"}
+{"id":"10","name":"ssaas","ownerId":"66ea78bf-b6c4-4bf1-9824-c241149d0ad0","ownerAddress":"66ea78bf-b6c4-4bf1-9824-c241149d0ad0"}
