@@ -79,7 +79,6 @@ async function listAuctions(req: NextRequest, params: { id: string }) {
                 },
                 bids: {
                     orderBy: { createdAt: 'desc' },
-                    take: 10,
                     include: {
                         bidder: {
                             select: { id: true, username: true }
@@ -90,7 +89,47 @@ async function listAuctions(req: NextRequest, params: { id: string }) {
             orderBy: { createdAt: 'desc' }
         });
 
-        return NextResponse.json(deepSerialize({ auctions }));
+        // Resolve character names instead of global usernames
+        const userIdsToFetch = new Set<string>();
+        auctions.forEach((a: any) => {
+            if (a.winnerId) userIdsToFetch.add(a.winnerId);
+            a.bids.forEach((b: any) => {
+                if (b.bidderId) userIdsToFetch.add(b.bidderId);
+            });
+        });
+
+        const members = await prisma.guildMember.findMany({
+            where: { guildId, memberId: { in: Array.from(userIdsToFetch) } },
+            include: { member: { select: { username: true } } }
+        });
+        const memberMap = new Map(members.map((m: any) => [m.memberId, m]));
+
+        const formattedAuctions = auctions.map((a: any) => {
+            const winnerMember = a.winnerId ? memberMap.get(a.winnerId) : null;
+            const winnerName = winnerMember?.characterName || winnerMember?.member?.username || a.winner?.username || 'Desconhecido';
+
+            return {
+                ...a,
+                winnerName: winnerName,
+                winner_name: winnerName,
+                winner: a.winner ? { ...a.winner, username: winnerName } : null,
+                bids: a.bids.map((b: any) => {
+                    const bidderMember = b.bidderId ? memberMap.get(b.bidderId) : null;
+                    const bidderName = bidderMember?.characterName || bidderMember?.member?.username || b.bidder?.username || 'Desconhecido';
+                    return {
+                        ...b,
+                        bidderName: bidderName,
+                        bidder_name: bidderName,
+                        bidder: b.bidder ? {
+                            ...b.bidder,
+                            username: bidderName
+                        } : null
+                    };
+                })
+            };
+        });
+
+        return NextResponse.json(deepSerialize({ auctions: formattedAuctions }));
     } catch (error) {
         console.error('Error fetching auctions:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
