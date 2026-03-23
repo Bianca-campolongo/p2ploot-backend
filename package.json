@@ -17,10 +17,10 @@
     "db:test": "node scripts/testar-conexao.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1015.0",
     "@mysten/dapp-kit": "^0.19.2",
     "@mysten/sui.js": "^0.54.1",
     "@prisma/client": "^5.7.1",
-    "@vercel/blob": "^2.3.1",
     "bcryptjs": "^2.4.3",
     "buffer": "^6.0.3",
     "jsonwebtoken": "^9.0.2",

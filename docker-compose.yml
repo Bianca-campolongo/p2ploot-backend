@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: p2ploot-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: talon
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  minio:
+    image: minio/minio
+    container_name: p2ploot-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+
+  minio-init:
+    image: minio/mc
+    container_name: p2ploot-minio-init
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      # Wait for MinIO to start
+      sleep 5;
+      # Configure mc alias
+      mc alias set local http://minio:9000 minioadmin minioadmin;
+      # Create bucket if it doesn't exist
+      mc mb local/p2ploot || true;
+      # Set bucket policy to allow public read (download)
+      mc anonymous set public local/p2ploot;
+      exit 0;
+      "
+
+volumes:
+  mysql_data:
+  minio_data:
