@@ -25,9 +25,14 @@ async function handleAction(req: NextRequest, user: any, params: { id: string; s
             return NextResponse.json({ error: 'Guild not found' }, { status: 404 });
         }
 
+        const callingMember = await prisma.guildMember.findUnique({
+            where: { guildId_memberId: { guildId, memberId: user.id } }
+        });
         const isOwner = guild.ownerId === user.id || guild.ownerAddress === user.id;
-        if (!isOwner) {
-            return NextResponse.json({ error: 'Only guild leader can approve pilots' }, { status: 403 });
+        const isAdmin = callingMember?.role === 'admin';
+
+        if (!isOwner && !isAdmin) {
+            return NextResponse.json({ error: 'Only guild leader and admins can approve pilots' }, { status: 403 });
         }
 
         // Find the share

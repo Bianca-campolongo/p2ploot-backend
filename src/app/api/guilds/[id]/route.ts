@@ -217,7 +217,14 @@ async function updateHandler(req: NextRequest, user: any, params: { id: string }
 
         if (!guild) return Response.json({ error: 'Guild not found' }, { status: 404 });
 
-        if (guild.ownerId !== user.id && guild.ownerAddress !== user.id) {
+        const callingMember = await prisma.guildMember.findUnique({
+            where: { guildId_memberId: { guildId, memberId: user.id } }
+        });
+        
+        const isOwner = guild.ownerId === user.id || guild.ownerAddress === user.id;
+        const isAdmin = callingMember?.role === 'admin';
+
+        if (!isOwner && !isAdmin) {
             return Response.json({ error: 'Not authorized' }, { status: 403 });
         }
 

@@ -140,9 +140,13 @@ async function removeShare(req: NextRequest, user: any, params: { id: string; me
             select: { ownerId: true, ownerAddress: true }
         });
         const isOwner = guild && (guild.ownerId === user.id || guild.ownerAddress === user.id);
+        const callingMember = await prisma.guildMember.findUnique({
+            where: { guildId_memberId: { guildId, memberId: user.id } }
+        });
+        const isAdmin = callingMember?.role === 'admin';
         const isSelf = user.id === memberId;
 
-        if (!isOwner && !isSelf) {
+        if (!isOwner && !isAdmin && !isSelf) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
 

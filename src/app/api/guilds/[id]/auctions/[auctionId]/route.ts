@@ -25,8 +25,8 @@ async function deleteAuctionHistory(req: NextRequest, user: any, params: { id: s
             return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
 
-        if (callingMember && !['owner', 'admin'].includes(callingMember.role) && !isOwner) {
-            return NextResponse.json({ error: 'Unauthorized. Only admins can delete auction history.' }, { status: 403 });
+        if (callingMember && !['owner'].includes(callingMember.role) && !isOwner) {
+            return NextResponse.json({ error: 'Unauthorized. Only owner can delete auction history.' }, { status: 403 });
         }
 
         // Get auction
