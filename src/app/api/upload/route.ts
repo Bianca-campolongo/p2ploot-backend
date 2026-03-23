@@ -9,7 +9,11 @@ const s3Client = new S3Client({
         accessKeyId: process.env.S3_ACCESS_KEY_ID || '',
         secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || '',
     },
-    forcePathStyle: true, // Necessário para o MinIO local
+    // forcePathStyle: true é necessário para o MinIO local, mas deve ser false para Cloudflare R2 em prod
+    // Se a variável não estiver definida, assumimos true se o endpoint for localhost
+    forcePathStyle: process.env.S3_FORCE_PATH_STYLE 
+        ? process.env.S3_FORCE_PATH_STYLE === 'true'
+        : (process.env.S3_ENDPOINT?.includes('localhost') || process.env.S3_ENDPOINT?.includes('127.0.0.1')),
 });
 
 async function handleUpload(req: NextRequest, user: any) {
@@ -77,9 +81,12 @@ async function handleUpload(req: NextRequest, user: any) {
 
         // URL pública montada com base na configuração do ambiente
         const publicUrlBase = process.env.S3_PUBLIC_URL?.replace(/\/$/, ""); // Remove slash final se existir
+        
+        // Se a URL pública já termina com o nome do bucket e o key também começa com algo similar 
+        // (por erro de config), evitamos duplicar. Mas aqui o key é fixo 'images/...'
         const url = `${publicUrlBase}/${key}`;
 
-        return NextResponse.json({ url });
+        return NextResponse.json({ url: url.replace(/\/$/, "") });
 
     } catch (error: any) {
         console.error('Falha no upload do arquivo:', error);
