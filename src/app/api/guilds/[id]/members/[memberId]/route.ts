@@ -82,15 +82,30 @@ async function kickMember(req: NextRequest, user: any, params: { id: string; mem
         const guildId = BigInt(params.id);
         const targetMemberId = params.memberId;
 
-        // Only owner can kick
+        // Only owner or admin can kick (admin cannot kick other admins/owners)
         const guild = await prisma.guild.findUnique({
             where: { id: guildId },
             select: { ownerId: true, ownerAddress: true }
         });
 
+        const callingMember = await prisma.guildMember.findUnique({
+            where: { guildId_memberId: { guildId, memberId: user.id } }
+        });
+
         const isOwner = guild && (guild.ownerId === user.id || guild.ownerAddress === user.id);
-        if (!isOwner) {
-            return NextResponse.json({ error: 'Only owner can kick members' }, { status: 403 });
+        const isAdmin = callingMember?.role === 'admin';
+
+        if (!isOwner && !isAdmin) {
+            return NextResponse.json({ error: 'Only owner and admins can kick members' }, { status: 403 });
+        }
+
+        if (isAdmin && !isOwner) {
+            const targetMember = await prisma.guildMember.findUnique({
+                where: { guildId_memberId: { guildId, memberId: targetMemberId } }
+            });
+            if (targetMember?.role === 'admin' || targetMember?.role === 'owner' || guild?.ownerId === targetMemberId) {
+                return NextResponse.json({ error: 'Admins cannot kick owners or other admins' }, { status: 403 });
+            }
         }
 
         // Can't kick self

@@ -46,8 +46,13 @@ async function createField(req: NextRequest, user: any, params: { id: string }) 
             select: { ownerId: true, ownerAddress: true }
         });
         const isOwner = guild && (guild.ownerId === user.id || guild.ownerAddress === user.id);
-        if (!isOwner) {
-            return NextResponse.json({ error: 'Only owner can manage fields' }, { status: 403 });
+        const callingMember = await prisma.guildMember.findUnique({
+            where: { guildId_memberId: { guildId, memberId: user.id } }
+        });
+        const isAdmin = callingMember?.role === 'admin';
+
+        if (!isOwner && !isAdmin) {
+            return NextResponse.json({ error: 'Only owner and admins can manage fields' }, { status: 403 });
         }
 
         // Get next display order
@@ -98,8 +103,13 @@ async function deleteField(req: NextRequest, user: any, params: { id: string }) 
             select: { ownerId: true, ownerAddress: true }
         });
         const isOwner = guild && (guild.ownerId === user.id || guild.ownerAddress === user.id);
-        if (!isOwner) {
-            return NextResponse.json({ error: 'Only owner can manage fields' }, { status: 403 });
+        const callingMember = await prisma.guildMember.findUnique({
+            where: { guildId_memberId: { guildId, memberId: user.id } }
+        });
+        const isAdmin = callingMember?.role === 'admin';
+
+        if (!isOwner && !isAdmin) {
+            return NextResponse.json({ error: 'Only owner and admins can manage fields' }, { status: 403 });
         }
 
         await prisma.guildCustomField.delete({
@@ -130,8 +140,13 @@ async function reorderFields(req: NextRequest, user: any, params: { id: string }
             select: { ownerId: true, ownerAddress: true }
         });
         const isOwner = guild && (guild.ownerId === user.id || guild.ownerAddress === user.id);
-        if (!isOwner) {
-            return NextResponse.json({ error: 'Only owner can manage fields' }, { status: 403 });
+        const callingMember = await prisma.guildMember.findUnique({
+            where: { guildId_memberId: { guildId, memberId: user.id } }
+        });
+        const isAdmin = callingMember?.role === 'admin';
+
+        if (!isOwner && !isAdmin) {
+            return NextResponse.json({ error: 'Only owner and admins can manage fields' }, { status: 403 });
         }
 
         await prisma.$transaction(
@@ -179,8 +194,13 @@ async function updateField(req: NextRequest, user: any, params: { id: string }) 
             select: { ownerId: true, ownerAddress: true }
         });
         const isOwner = guild && (guild.ownerId === user.id || guild.ownerAddress === user.id);
-        if (!isOwner) {
-            return NextResponse.json({ error: 'Only owner can manage fields' }, { status: 403 });
+        const callingMember = await prisma.guildMember.findUnique({
+            where: { guildId_memberId: { guildId, memberId: user.id } }
+        });
+        const isAdmin = callingMember?.role === 'admin';
+
+        if (!isOwner && !isAdmin) {
+            return NextResponse.json({ error: 'Only owner and admins can manage fields' }, { status: 403 });
         }
 
         const updatedField = await prisma.guildCustomField.update({
