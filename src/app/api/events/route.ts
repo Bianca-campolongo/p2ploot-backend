@@ -16,7 +16,8 @@ export async function GET(request: NextRequest) {
         // await prisma.$connect(); 
 
         const whereClause: any = {
-            status: { not: 'cancelled' },
+            status: { in: ['upcoming', 'ongoing'] },
+            approvedAt: { not: null },
             eventDate: {
                 gte: new Date(),
             }
@@ -111,6 +112,7 @@ async function createEventHandler(req: NextRequest, user: AuthUser) {
                     prizePool,
                     imageUrl,
                     organizerId: user.id,
+                    status: 'pending'
                 },
             });
 

@@ -4,7 +4,8 @@ import { requireAuth } from '@/lib/auth';
 import { z } from 'zod';
 
 const updateSchema = z.object({
-    status: z.enum(['pending', 'resolved', 'dismissed'])
+    status: z.enum(['pending', 'resolved', 'dismissed', 'rejected']),
+    moderatorNote: z.string().optional()
 });
 
 async function updateReport(req: NextRequest, user: any, params: { id: string }) {
@@ -15,7 +16,10 @@ async function updateReport(req: NextRequest, user: any, params: { id: string })
 
         const report = await prisma.adReport.update({
             where: { id: reportId },
-            data: { status: data.status }
+            data: { 
+                status: data.status,
+                moderatorNote: data.moderatorNote
+            }
         });
 
         return NextResponse.json({ success: true, status: report.status });

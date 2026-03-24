@@ -101,33 +101,66 @@ const createAdSchema = z.object({
 });
 
 async function createAd(req: NextRequest, user: any) {
+    const AD_CREATION_COST = 1;
     try {
         const body = await req.json();
         const data = createAdSchema.parse(body);
 
-        // Calculate expiration if not provided (default 30 days)
-        const expiresAt = data.expires_at ? new Date(data.expires_at) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        // Transaction: Debit credits AND Create Ad
+        const result = await prisma.$transaction(async (tx) => {
+            // 1. Check & Debit Credits
+            const profile = await tx.profile.findUnique({
+                where: { id: user.id }
+            });
 
-        const ad = await prisma.marketAd.create({
-            data: {
-                userId: user.id,
-                title: data.title,
-                description: data.description || '',
-                price: data.price,
-                currency: data.currency,
-                game: data.game,
-                server: data.server,
-                region: data.region,
-                type: data.type,
-                imageUrl: data.images?.[0] || data.imageUrl || null,
-                status: 'active',
-                sellerAddress: user.walletAddress,
-                expiresAt,
-                lastRenewedAt: new Date(),
+            if (!profile) throw new Error('User not found');
+            if (Number(profile.credits) < AD_CREATION_COST) {
+                throw new Error('Insufficient credits');
             }
+
+            // Debit
+            const newBalance = Number(profile.credits) - AD_CREATION_COST;
+            await tx.profile.update({
+                where: { id: user.id },
+                data: { credits: newBalance }
+            });
+
+            // Log Transaction
+            await tx.creditTransaction.create({
+                data: {
+                    userId: user.id,
+                    amount: -AD_CREATION_COST,
+                    balanceAfter: newBalance,
+                    transactionType: 'debit',
+                    referenceType: 'ad_creation',
+                    description: `Criação de anúncio: ${data.title}`
+                }
+            });
+
+            // 2. Create Ad
+            const ad = await tx.marketAd.create({
+                data: {
+                    userId: user.id,
+                    title: data.title,
+                    description: data.description || '',
+                    price: data.price,
+                    currency: data.currency,
+                    game: data.game,
+                    server: data.server,
+                    region: data.region,
+                    type: data.type,
+                    imageUrl: data.images?.[0] || data.imageUrl || null,
+                    status: 'pending',
+                    sellerAddress: user.walletAddress,
+                    expiresAt: null, // Only set upon approval
+                    lastRenewedAt: new Date(),
+                }
+            });
+
+            return ad;
         });
 
-        const base = deepSerialize(ad);
+        const base = deepSerialize(result);
         return NextResponse.json({
             ...base,
             image_url: base.imageUrl,
@@ -136,6 +169,9 @@ async function createAd(req: NextRequest, user: any) {
         });
     } catch (error: any) {
         console.error('Error creating ad:', error);
+        if (error.message === 'Insufficient credits') {
+            return NextResponse.json({ error: 'Saldo insuficiente para criar anúncio.' }, { status: 402 });
+        }
         if (error instanceof z.ZodError) {
             return NextResponse.json({ error: 'Invalid data', details: error.errors }, { status: 400 });
         }

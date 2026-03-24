@@ -18,7 +18,10 @@ async function getMessages(req: NextRequest, user: any, params: { id: string }) 
             return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
         }
 
-        if (conversation.buyerId !== user.id && conversation.sellerId !== user.id) {
+        const adminEmail = process.env.ADMIN_EMAIL;
+        const isAdmin = user.role === 'admin' || (user.email && adminEmail && user.email === adminEmail);
+
+        if (!isAdmin && conversation.buyerId !== user.id && conversation.sellerId !== user.id) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
 
@@ -74,7 +77,10 @@ async function sendMessage(req: NextRequest, user: any, params: { id: string }) 
             return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
         }
 
-        if (conversation.buyerId !== user.id && conversation.sellerId !== user.id) {
+        const adminEmail = process.env.ADMIN_EMAIL;
+        const isAdmin = user.role === 'admin' || (user.email && adminEmail && user.email === adminEmail);
+
+        if (!isAdmin && conversation.buyerId !== user.id && conversation.sellerId !== user.id) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
 

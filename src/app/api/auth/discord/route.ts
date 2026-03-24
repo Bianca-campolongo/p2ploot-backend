@@ -48,6 +48,9 @@ export async function POST(request: NextRequest) {
 
       // Se ainda não tem usuário, criar novo
       if (!user) {
+        const adminEmail = process.env.ADMIN_EMAIL;
+        const isAdmin = data.email && adminEmail && data.email === adminEmail;
+
         user = await prisma.profile.create({
           data: {
             email: data.email || null,
@@ -58,12 +61,15 @@ export async function POST(request: NextRequest) {
             primaryAuthMethod: 'discord',
             avatarUrl: data.avatar || null,
             credits: 10.00,
-            role: 'user',
+            role: isAdmin ? 'admin' : 'user',
           },
         });
       }
     } else {
       // Atualizar informações do Discord se mudaram
+      const adminEmail = process.env.ADMIN_EMAIL;
+      const isAdmin = data.email && adminEmail && data.email === adminEmail;
+
       user = await prisma.profile.update({
         where: { id: user.id },
         data: {
@@ -71,6 +77,7 @@ export async function POST(request: NextRequest) {
           discordGlobalName: data.discordGlobalName || user.discordGlobalName,
           avatarUrl: data.avatar || user.avatarUrl,
           email: data.email || user.email,
+          ...(isAdmin && { role: 'admin' })
         },
       });
     }

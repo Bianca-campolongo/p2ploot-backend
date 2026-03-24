@@ -6,37 +6,47 @@ export const dynamic = 'force-dynamic';
 
 // Função auxiliar para detectar URL do frontend
 function getFrontendUrl(request: NextRequest): string {
-  // Prioridade 1: Variável de ambiente (SEMPRE usar se definida - mesmo em dev para testes)
+  // Detectar dinamicamente a origem para facilitar testes locais em portas variadas
+  const origin = request.headers.get('origin') || request.headers.get('referer');
+  if (origin) {
+    try {
+      const originUrl = new URL(origin);
+      const host = originUrl.host; // includes port
+      const hostname = originUrl.hostname;
+      
+      const isLocal = hostname === 'localhost' || 
+                      hostname === '127.0.0.1' || 
+                      hostname.startsWith('192.168.') || 
+                      hostname.startsWith('10.');
+
+      if (isLocal) {
+        const localFrontendUrl = `${originUrl.protocol}//${host}`;
+        console.log('[Discord Callback] 🏠 Localhost detectado via Header, redirecionando para:', localFrontendUrl);
+        return localFrontendUrl;
+      }
+    } catch (e) {
+      // Ignorar erro de parsing de URL e seguir para fallback
+    }
+  }
+
+  // Prioridade 1: Variável de ambiente
   const envUrl = process.env.NEXT_PUBLIC_FRONTEND_URL?.trim();
   if (envUrl) {
     console.log('[Discord Callback] ✅ Usando NEXT_PUBLIC_FRONTEND_URL:', envUrl);
     return envUrl;
   }
 
-  // Prioridade 2: Detectar automaticamente pelo hostname da requisição
+  // Prioridade 2: Detectar pelo hostname
   try {
     const requestUrl = new URL(request.url);
     const hostname = requestUrl.hostname;
-    const isProduction = hostname !== 'localhost' &&
-      hostname !== '127.0.0.1' &&
-      !hostname.startsWith('192.168.') &&
-      !hostname.startsWith('10.') &&
-      hostname !== '';
-
-    if (isProduction) {
+    if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
       const url = `${requestUrl.protocol}//${hostname}`;
-      console.log('[Discord Callback] ✅ Produção detectada pelo hostname, usando:', url);
       return url;
-    } else {
-      console.log('[Discord Callback] ⚠️ Ambiente de desenvolvimento detectado:', hostname);
     }
-  } catch (e) {
-    console.warn('[Discord Callback] ⚠️ Erro ao detectar URL:', e);
-  }
+  } catch (e) {}
 
-  // Prioridade 3: Fallback desenvolvimento (APENAS se realmente não tiver variável definida)
-  console.log('[Discord Callback] ⚠️ Usando fallback desenvolvimento: http://localhost:6111');
-  console.log('[Discord Callback] ⚠️ ATENÇÃO: NEXT_PUBLIC_FRONTEND_URL não está definida!');
+  // Fallback final
   return 'http://localhost:6111';
 }
 

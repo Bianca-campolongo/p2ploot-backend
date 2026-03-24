@@ -102,8 +102,8 @@ export function requireAuth(handler: (req: NextRequest, user: AuthUser, context?
 }
 
 export function requireRole(roles: string[]) {
-  return (handler: (req: NextRequest, user: AuthUser) => Promise<Response>) => {
-    return requireAuth(async (req, user) => {
+  return (handler: (req: NextRequest, user: AuthUser, context?: any) => Promise<Response>) => {
+    return requireAuth(async (req, user, context) => {
       if (!roles.includes(user.role)) {
         return Response.json(
           { error: 'Forbidden' },
@@ -111,7 +111,7 @@ export function requireRole(roles: string[]) {
         );
       }
 
-      return handler(req, user);
+      return handler(req, user, context);
     });
   };
 }
