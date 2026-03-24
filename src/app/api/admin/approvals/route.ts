@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireRole } from '@/lib/auth';
+import { deepSerialize } from '@/lib/serialize';
 
 // GET /api/admin/approvals - List all pending content
 async function getPendingApprovals(req: NextRequest) {
@@ -34,23 +35,10 @@ async function getPendingApprovals(req: NextRequest) {
             })
         ]);
 
-        // Serialize BigInt if necessary (MarketAd has BigInt ID)
-        const serializedAds = pendingAds.map(ad => ({
-            ...ad,
-            id: ad.id.toString(),
-            price: ad.price ? Number(ad.price) : null,
-            type: 'market_ad'
+        return NextResponse.json(deepSerialize({
+            marketAds: pendingAds.map(ad => ({ ...ad, type: 'market_ad' })),
+            events: pendingEvents.map(event => ({ ...event, type: 'event' }))
         }));
-
-        const serializedEvents = pendingEvents.map(event => ({
-            ...event,
-            type: 'event'
-        }));
-
-        return NextResponse.json({
-            marketAds: serializedAds,
-            events: serializedEvents
-        });
     } catch (error: any) {
         console.error('[Admin Approvals] Error:', error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

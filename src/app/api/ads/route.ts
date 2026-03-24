@@ -161,12 +161,12 @@ async function createAd(req: NextRequest, user: any) {
         });
 
         const base = deepSerialize(result);
-        return NextResponse.json({
+        return NextResponse.json(deepSerialize({
             ...base,
             image_url: base.imageUrl,
             user_id: base.userId,
             images: base.imageUrl ? [base.imageUrl] : []
-        });
+        }));
     } catch (error: any) {
         console.error('Error creating ad:', error);
         if (error.message === 'Insufficient credits') {
@@ -175,7 +175,11 @@ async function createAd(req: NextRequest, user: any) {
         if (error instanceof z.ZodError) {
             return NextResponse.json({ error: 'Invalid data', details: error.errors }, { status: 400 });
         }
-        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+        return NextResponse.json({ 
+            error: 'Internal server error',
+            details: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        }, { status: 500 });
     }
 }
 
