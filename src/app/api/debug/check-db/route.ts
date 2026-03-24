@@ -11,8 +11,9 @@ export async function GET(req: NextRequest) {
         // 1. Connection Test
         const dbNow = await prisma.$queryRaw`SELECT NOW() as now`;
         
-        // 2. Table Column Check (MarketAd)
+        // 2. Table Column Check
         const marketAdCols = await prisma.$queryRaw`DESCRIBE market_ads`;
+        const eventCols = await prisma.$queryRaw`DESCRIBE events`;
         
         // 3. User Auth (Self check)
         // Just checking if we can query some records
@@ -37,6 +38,7 @@ export async function GET(req: NextRequest) {
             },
             firstUser: firstUser,
             market_ads_columns: marketAdCols,
+            events_columns: eventCols,
             env: {
                 DATABASE_URL_DEFINED: !!process.env.DATABASE_URL,
                 NODE_ENV: process.env.NODE_ENV,
