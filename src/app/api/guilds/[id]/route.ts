@@ -2,8 +2,81 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, verifyToken } from '@/lib/auth';
 import { deepSerialize } from '@/lib/serialize';
+import { applyDecay } from '@/lib/dkp';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * Checks if DKP decay is due and applies it if necessary.
+ * Uses dkp_config JSON field to store 'last_decay_at'.
+ */
+async function applyDkpDecayIfNeeded(guild: any) {
+    if (!guild.dkpDecayActive || !guild.dkpDecayPercent) return guild;
+
+    const dkpConfig = (guild.dkpConfig as any) || {};
+    // Get last decay in Brasilia hacked-time for comparison
+    const lastDecayAt = dkpConfig.last_decay_at 
+        ? new Date(new Date(dkpConfig.last_decay_at).toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })) 
+        : null;
+    
+    const decayTime = dkpConfig.decay_time || "00:00";
+    const interval = guild.dkpDecayInterval; // 'weekly', 'monthly'
+    const day = guild.dkpDecayDay || 1; // 1-7 for weekly (1=Mon, 7=Sun), 1-31 for monthly
+    
+    // Safety buffer: If we already decayed in the last 6 hours, skip to prevent double-trigger
+    // (especially common if settings are saved right before a scheduled time)
+    if (lastDecayAt && (new Date().getTime() - new Date(dkpConfig.last_decay_at).getTime()) < 6 * 60 * 60 * 1000) {
+        return guild;
+    }
+
+    // Get current time in Brasilia (GMT-3)
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+    const [hours, minutes] = decayTime.split(':').map(Number);
+    
+    let scheduledTime = new Date(now);
+    scheduledTime.setHours(hours, minutes, 0, 0);
+
+    if (interval === 'weekly') {
+        const jsDay = day % 7; // Frontend sends 0-6 (Sun-Sat)
+        const diff = (now.getDay() - jsDay + 7) % 7;
+        scheduledTime.setDate(now.getDate() - diff);
+        // If scheduled for today but time is in the future, look at last week
+        if (scheduledTime > now) {
+            scheduledTime.setDate(scheduledTime.getDate() - 7);
+        }
+    } else if (interval === 'monthly') {
+        const targetDay = Math.min(day, new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate());
+        scheduledTime.setDate(targetDay);
+        // If scheduled for today but time is in the future, look at last month
+        if (scheduledTime > now) {
+            scheduledTime.setMonth(now.getMonth() - 1);
+        }
+    }
+
+    // If never decayed OR last decay was before the MOST RECENT scheduled time
+    if (!lastDecayAt || lastDecayAt < scheduledTime) {
+        console.log(`[DECAY] Triggering automatic decay for guild ${guild.id}`);
+        try {
+            await prisma.$transaction(async (tx) => {
+                await applyDecay(tx, guild.id, guild.dkpDecayPercent);
+                
+                // Update dkp_config metadata
+                const newConfig = { ...dkpConfig, last_decay_at: new Date().toISOString() };
+                await tx.guild.update({
+                    where: { id: guild.id },
+                    data: { dkpConfig: newConfig }
+                });
+                
+                guild.dkpConfig = newConfig;
+            });
+            console.log(`[DECAY] Successfully applied automatic decay to guild ${guild.id}`);
+        } catch (error) {
+            console.error(`[DECAY] Error applying automatic decay to guild ${guild.id}:`, error);
+        }
+    }
+
+    return guild;
+}
 
 // GET - Get a single guild with details
 export async function GET(
@@ -106,6 +179,9 @@ export async function GET(
             console.log(`[GET /api/guilds/${params.id}] Not found`);
             return Response.json({ error: 'Guild not found' }, { status: 404 });
         }
+
+        // Apply DKP Decay if needed
+        await applyDkpDecayIfNeeded(guild);
 
         console.log(`[GET /api/guilds/${params.id}] Step 2: Permissions Check`);
         // Check user's relationship to guild
