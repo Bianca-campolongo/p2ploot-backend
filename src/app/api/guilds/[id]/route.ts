@@ -22,6 +22,12 @@ async function applyDkpDecayIfNeeded(guild: any) {
     const decayTime = dkpConfig.decay_time || "00:00";
     const interval = guild.dkpDecayInterval; // 'weekly', 'monthly'
     const day = guild.dkpDecayDay || 1; // 1-7 for weekly (1=Mon, 7=Sun), 1-31 for monthly
+    
+    // Safety buffer: If we already decayed in the last 6 hours, skip to prevent double-trigger
+    // (especially common if settings are saved right before a scheduled time)
+    if (lastDecayAt && (new Date().getTime() - new Date(dkpConfig.last_decay_at).getTime()) < 6 * 60 * 60 * 1000) {
+        return guild;
+    }
 
     // Get current time in Brasilia (GMT-3)
     const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
