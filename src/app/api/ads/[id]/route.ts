@@ -65,7 +65,7 @@ async function updateAd(req: NextRequest, user: any, params: { id: string }) {
         // Verify ownership
         const ad = await prisma.marketAd.findUnique({
             where: { id: adId },
-            select: { userId: true }
+            select: { userId: true, status: true }
         });
 
         if (!ad) {
@@ -76,19 +76,26 @@ async function updateAd(req: NextRequest, user: any, params: { id: string }) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
 
+        const isPending = ad.status === 'pending';
+
         // Build update object
         const updateData: any = {};
-        if (data.title !== undefined) updateData.title = data.title;
-        if (data.description !== undefined) updateData.description = data.description;
+        
+        // Fields allowed ALWAYS (Predefined system fields or Price)
         if (data.price !== undefined) updateData.price = data.price;
         if (data.currency !== undefined) updateData.currency = data.currency;
         if (data.game !== undefined) updateData.game = data.game;
         if (data.server !== undefined) updateData.server = data.server;
         if (data.region !== undefined) updateData.region = data.region;
         if (data.type !== undefined) updateData.type = data.type;
-        if (data.images !== undefined) {
-            // Store first image as imageUrl for backward compat
-            updateData.imageUrl = data.images[0] || null;
+
+        // Fields allowed ONLY if pending (Freestyle text or images)
+        if (isPending) {
+            if (data.title !== undefined) updateData.title = data.title;
+            if (data.description !== undefined) updateData.description = data.description;
+            if (data.images !== undefined) {
+                updateData.imageUrl = data.images[0] || null;
+            }
         }
 
         await prisma.marketAd.update({

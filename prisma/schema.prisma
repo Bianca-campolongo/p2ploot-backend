@@ -71,6 +71,8 @@ model Profile {
   gameComments          GameComment[]
   gameCommentVotes      GameCommentVote[]
   eventsOrganized       Event[]                @relation("EventOrganizer")
+  eventsApproved        Event[]                @relation("EventApprover")
+  adsApproved           MarketAd[]             @relation("AdApprover")
 
   @@map("profiles")
 }
@@ -444,6 +446,10 @@ model MarketAd {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
+  approvedAt    DateTime? @map("approved_at")
+  approvedById  String?   @map("approved_by_id") @db.Char(36)
+  approvedBy    Profile?  @relation("AdApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
   user    Profile    @relation(fields: [userId], references: [id], onDelete: Cascade)
   reports AdReport[]
 
@@ -454,13 +460,14 @@ model MarketAd {
 }
 
 model AdReport {
-  id         String   @id @default(uuid()) @db.Char(36)
-  adId       BigInt   @map("ad_id")
-  reporterId String?  @map("reporter_id") @db.Char(36)
-  reason     String   @db.Text
-  details    String?  @db.Text
-  status     String   @default("pending") @db.VarChar(50)
-  createdAt  DateTime @default(now()) @map("created_at")
+  id            String   @id @default(uuid()) @db.Char(36)
+  adId          BigInt   @map("ad_id")
+  reporterId    String?  @map("reporter_id") @db.Char(36)
+  reason        String   @db.Text
+  details       String?  @db.Text
+  status        String   @default("pending") @db.VarChar(50)
+  moderatorNote String?  @map("moderator_note") @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
 
   ad       MarketAd @relation(fields: [adId], references: [id], onDelete: Cascade)
   reporter Profile? @relation(fields: [reporterId], references: [id], onDelete: SetNull)
@@ -650,6 +657,10 @@ model Event {
   
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
+
+  approvedAt    DateTime? @map("approved_at")
+  approvedById  String?   @map("approved_by_id") @db.Char(36)
+  approvedBy    Profile?  @relation("EventApprover", fields: [approvedById], references: [id], onDelete: SetNull)
 
   organizer   Profile  @relation("EventOrganizer", fields: [organizerId], references: [id], onDelete: Cascade)
 

@@ -36,4 +36,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-
+# scripts temporarios de restore
+scripts/restore*.js
+scripts/check_db.js
+scripts/add_status_column.js

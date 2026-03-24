@@ -19,14 +19,17 @@ async function getAdConversations(req: NextRequest, user: any, params: { id: str
             return NextResponse.json({ error: 'Ad not found' }, { status: 404 });
         }
 
-        const isOwner = ad.userId === user.id;
+        const adminEmail = process.env.ADMIN_EMAIL;
+        const isAdmin = user.role === 'admin' || (user.email && adminEmail && user.email === adminEmail);
+        const isOwner = ad.userId === user.id || isAdmin;
 
         if (isOwner) {
-            // Seller: Get all conversations for this ad
+            // Seller or Admin: Get all conversations for this ad
             const conversations = await prisma.conversation.findMany({
                 where: {
                     adId,
-                    sellerId: user.id
+                    // If not admin, only show their own ad's conversations
+                    ...(isAdmin ? {} : { sellerId: user.id })
                 },
                 include: {
                     buyer: {
