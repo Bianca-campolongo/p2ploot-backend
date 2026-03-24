@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
+import { deepSerialize } from '@/lib/serialize';
 
 async function getUserNotifications(req: NextRequest, user: any) {
     try {
@@ -8,7 +9,7 @@ async function getUserNotifications(req: NextRequest, user: any) {
         const fortyEightHoursAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
         const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-        // 1. Mensagens Não Lidas (Héurística simples: última mensagem não enviada pelo usuário)
+        // 1. Mensagens Não Lidas
         const conversations = await prisma.conversation.findMany({
             where: {
                 OR: [
@@ -23,7 +24,7 @@ async function getUserNotifications(req: NextRequest, user: any) {
                 }
             }
         });
-        const unreadConvs = conversations.filter(c => c.messages.length > 0 && c.messages[0].senderId !== user.id);
+        const unreadConvs = conversations.filter(c => c.messages && c.messages.length > 0 && c.messages[0].senderId !== user.id);
 
         // Buscar títulos dos anúncios para as mensagens
         const adIds = unreadConvs.map(c => c.adId).filter(id => id !== null) as bigint[];
@@ -52,7 +53,7 @@ async function getUserNotifications(req: NextRequest, user: any) {
             select: { id: true, title: true }
         });
 
-        // 4. Tickets de Suporte Respondidos (status != open/new e atualizados recentemente)
+        // 4. Tickets de Suporte Respondidos
         const respondedTickets = await prisma.supportTicket.findMany({
             where: {
                 userId: user.id,
@@ -113,27 +114,30 @@ async function getUserNotifications(req: NextRequest, user: any) {
                 id: `user-ticket-update-${ticket.id}`,
                 type: 'ticket_update',
                 text: `🎫 Seu ticket "${ticket.title}" foi atualizado status: ${ticket.status}.`,
-                link: '/meu-perfil', // Assumindo aba de suporte no perfil
+                link: '/meu-perfil',
                 createdAt: now
             });
         });
 
         expiringGuilds.forEach(guild => {
-            const daysLeft = Math.ceil((guild.accessExpiresAt!.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-            notifications.push({
-                id: `user-guild-expire-${guild.id}`,
-                type: 'guild_expiring',
-                text: `🏰 Acesso da sua Guilda "${guild.name}" expira em ${daysLeft} dia(s).`,
-                link: `/guild/${guild.id}/manage`,
-                createdAt: now
-            });
+            const expiresAt = guild.accessExpiresAt;
+            if (expiresAt) {
+                const daysLeft = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                notifications.push({
+                    id: `user-guild-expire-${guild.id}`,
+                    type: 'guild_expiring',
+                    text: `🏰 Acesso da sua Guilda "${guild.name}" expira em ${daysLeft} dia(s).`,
+                    link: `/guild/${guild.id}/manage`,
+                    createdAt: now
+                });
+            }
         });
 
-        return NextResponse.json({
+        return NextResponse.json(deepSerialize({
             success: true,
             notifications
-        });
-    } catch (error) {
+        }));
+    } catch (error: any) {
         console.error('[User Notifications] Error:', error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }

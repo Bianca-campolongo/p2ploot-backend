@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthUser, requireAuth, AuthUser } from '@/lib/auth';
+import { deepSerialize } from '@/lib/serialize';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,9 +12,7 @@ export async function GET(request: NextRequest) {
         const game = searchParams.get('game');
         const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : undefined;
 
-        console.log('[API] Check DB Connection...');
-        // Teste simples para ver se o prisma está ok
-        // await prisma.$connect(); 
+        console.log('[API] Fetching events...');
 
         const whereClause: any = {
             status: { in: ['upcoming', 'ongoing'] },
@@ -26,8 +25,6 @@ export async function GET(request: NextRequest) {
         if (game && game !== 'all') {
             whereClause.game = game;
         }
-
-        console.log('[API] Fetching events with where:', whereClause);
 
         const events = await prisma.event.findMany({
             where: whereClause,
@@ -46,13 +43,11 @@ export async function GET(request: NextRequest) {
             }
         });
 
-        console.log(`[API] Found ${events.length} events`);
-        return NextResponse.json(events);
+        return NextResponse.json(deepSerialize(events));
     } catch (error: any) {
         console.error('Error fetching events:', error);
         return NextResponse.json({
-            error: 'Internal Server Error',
-            details: error.message
+            error: 'Internal Server Error'
         }, { status: 500 });
     }
 }
@@ -65,7 +60,7 @@ async function createEventHandler(req: NextRequest, user: AuthUser) {
         const data = await req.json();
         const { title, description, game, category, eventMode, eventDate, location, prizePool, imageUrl } = data;
 
-        console.log('[API] Creating event for user:', user.id, data);
+        console.log('[API] Creating event for user:', user.id);
 
         if (!title || !eventDate || !game) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -119,12 +114,11 @@ async function createEventHandler(req: NextRequest, user: AuthUser) {
             return event;
         });
 
-        return NextResponse.json(result, { status: 201 });
+        return NextResponse.json(deepSerialize(result), { status: 201 });
     } catch (error: any) {
         console.error('Error creating event:', error);
         return NextResponse.json({
-            error: 'Internal Server Error',
-            details: error.message
+            error: 'Internal Server Error'
         }, { status: 500 });
     }
 }

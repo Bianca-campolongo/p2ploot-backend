@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { z } from 'zod';
+import { deepSerialize } from '@/lib/serialize';
 
 // POST /api/reports/ads - Create ad report
 const reportSchema = z.object({
@@ -70,21 +71,8 @@ async function getReports(req: NextRequest, user: any) {
             orderBy: { createdAt: 'desc' }
         });
 
-        const serializedReports = reports.map(r => ({
-            ...r,
-            adId: r.adId.toString(), // Convert BigInt
-            ad: r.ad ? {
-                ...r.ad,
-                id: String(r.ad.id),
-                price: r.ad.price ? r.ad.price.toString() : null, // Convert Decimal
-                image_url: r.ad.imageUrl,
-                user_id: r.ad.userId
-            } : null,
-            created_at: r.createdAt.toISOString()
-        }));
-
-        return NextResponse.json(serializedReports);
-    } catch (error) {
+        return NextResponse.json(deepSerialize(reports));
+    } catch (error: any) {
         console.error('Error fetching reports:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }

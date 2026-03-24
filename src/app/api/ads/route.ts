@@ -73,13 +73,10 @@ export async function GET(req: NextRequest) {
             };
         });
 
-        return NextResponse.json(serializedAds);
+        return NextResponse.json(deepSerialize(serializedAds));
     } catch (error: any) {
         console.error('Error fetching ads:', error);
-        return NextResponse.json(
-            { error: 'Internal server error' }, 
-            { status: 500 }
-        );
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }
 
@@ -161,12 +158,12 @@ async function createAd(req: NextRequest, user: any) {
         });
 
         const base = deepSerialize(result);
-        return NextResponse.json({
+        return NextResponse.json(deepSerialize({
             ...base,
             image_url: base.imageUrl,
             user_id: base.userId,
             images: base.imageUrl ? [base.imageUrl] : []
-        });
+        }));
     } catch (error: any) {
         console.error('Error creating ad:', error);
         if (error.message === 'Insufficient credits') {

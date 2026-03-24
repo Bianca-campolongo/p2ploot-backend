@@ -35,7 +35,7 @@ async function main() {
             title: 'Renew Test Ad',
             description: 'Ad to be renewed',
             price: 100,
-            currency: 'SUI',
+            currency: 'P2P',
             status: 'active',
             expiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000), // Expired 1 day ago
             sellerAddress: '0x123'

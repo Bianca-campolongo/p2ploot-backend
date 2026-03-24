@@ -52,15 +52,6 @@ function getFrontendUrl(request: NextRequest): string {
 
 // Callback do Discord OAuth
 export async function GET(request: NextRequest) {
-  console.log('[Discord Callback] ========================================');
-  console.log('[Discord Callback] Iniciando callback, URL:', request.url);
-  console.log('[Discord Callback] Todas as variáveis de ambiente:');
-  console.log('[Discord Callback] - DISCORD_CLIENT_ID:', process.env.DISCORD_CLIENT_ID ? `✅ ${process.env.DISCORD_CLIENT_ID.substring(0, 10)}...` : '❌ NÃO DEFINIDO');
-  console.log('[Discord Callback] - DISCORD_CLIENT_SECRET:', process.env.DISCORD_CLIENT_SECRET ? `✅ Definido (${process.env.DISCORD_CLIENT_SECRET.length} chars)` : '❌ NÃO DEFINIDO');
-  console.log('[Discord Callback] - NEXTAUTH_URL:', process.env.NEXTAUTH_URL || '❌ NÃO DEFINIDO');
-  console.log('[Discord Callback] - NEXT_PUBLIC_FRONTEND_URL:', process.env.NEXT_PUBLIC_FRONTEND_URL || '❌ NÃO DEFINIDO');
-  console.log('[Discord Callback] ========================================');
-
   try {
     const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get('code');
@@ -91,20 +82,10 @@ export async function GET(request: NextRequest) {
     const nextAuthUrl = process.env.NEXTAUTH_URL?.trim();
 
     if (!clientId || !clientSecret || !nextAuthUrl) {
-      console.error('[Discord Callback] Variáveis não configuradas:', {
-        clientId: clientId ? `✅ (${clientId.substring(0, 10)}...)` : '❌ Não definido',
-        clientSecret: clientSecret ? '✅ Definido' : '❌ Não definido',
-        nextAuthUrl: nextAuthUrl || '❌ Não definido',
-      });
       throw new Error('Discord OAuth não configurado corretamente');
     }
 
     const redirectUri = `${nextAuthUrl}/api/auth/callback/discord`;
-    console.log('[Discord Callback] Credenciais:', {
-      clientId: `${clientId.substring(0, 10)}...`,
-      clientSecretLength: clientSecret.length,
-      redirectUri: redirectUri,
-    });
 
     // Trocar code por access token
     const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
