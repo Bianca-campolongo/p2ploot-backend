@@ -47,9 +47,7 @@ export async function GET(request: NextRequest) {
     } catch (error: any) {
         console.error('Error fetching events:', error);
         return NextResponse.json({
-            error: 'Internal Server Error',
-            message: error.message,
-            stack: error.stack
+            error: 'Internal Server Error'
         }, { status: 500 });
     }
 }
@@ -120,9 +118,7 @@ async function createEventHandler(req: NextRequest, user: AuthUser) {
     } catch (error: any) {
         console.error('Error creating event:', error);
         return NextResponse.json({
-            error: 'Internal Server Error',
-            message: error.message,
-            stack: error.stack
+            error: 'Internal Server Error'
         }, { status: 500 });
     }
 }

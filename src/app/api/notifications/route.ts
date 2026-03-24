@@ -139,11 +139,7 @@ async function getUserNotifications(req: NextRequest, user: any) {
         }));
     } catch (error: any) {
         console.error('[User Notifications] Error:', error);
-        return NextResponse.json({ 
-            error: 'Internal Server Error',
-            message: error.message,
-            stack: error.stack
-        }, { status: 500 });
+        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }
 }
 
