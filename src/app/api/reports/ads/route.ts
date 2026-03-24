@@ -72,9 +72,13 @@ async function getReports(req: NextRequest, user: any) {
         });
 
         return NextResponse.json(deepSerialize(reports));
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error fetching reports:', error);
-        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+        return NextResponse.json({ 
+            error: 'Internal server error',
+            message: error.message,
+            stack: error.stack
+        }, { status: 500 });
     }
 }
 

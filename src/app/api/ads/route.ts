@@ -73,13 +73,14 @@ export async function GET(req: NextRequest) {
             };
         });
 
-        return NextResponse.json(serializedAds);
+        return NextResponse.json(deepSerialize(serializedAds));
     } catch (error: any) {
         console.error('Error fetching ads:', error);
-        return NextResponse.json(
-            { error: 'Internal server error' }, 
-            { status: 500 }
-        );
+        return NextResponse.json({ 
+            error: 'Internal server error',
+            message: error.message,
+            stack: error.stack
+        }, { status: 500 });
     }
 }
 
@@ -177,8 +178,8 @@ async function createAd(req: NextRequest, user: any) {
         }
         return NextResponse.json({ 
             error: 'Internal server error',
-            details: error.message,
-            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            message: error.message,
+            stack: error.stack
         }, { status: 500 });
     }
 }

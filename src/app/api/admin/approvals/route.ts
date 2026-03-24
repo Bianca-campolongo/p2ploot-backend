@@ -41,7 +41,11 @@ async function getPendingApprovals(req: NextRequest) {
         }));
     } catch (error: any) {
         console.error('[Admin Approvals] Error:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({ 
+            error: 'Internal Server Error',
+            message: error.message,
+            stack: error.stack
+        }, { status: 500 });
     }
 }
 
