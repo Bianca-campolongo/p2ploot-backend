@@ -36,6 +36,11 @@ model Profile {
   reputationScore  Int       @default(0) @map("reputation_score")
   discordCreatedAt DateTime? @map("discord_created_at")
 
+  // Ban System
+  isBanned  Boolean   @default(false) @map("is_banned")
+  banReason String?   @map("ban_reason") @db.Text
+  bannedAt  DateTime? @map("banned_at")
+
   // Créditos
   credits Decimal @default(10.00) @db.Decimal(10, 2)
 
@@ -73,6 +78,7 @@ model Profile {
   eventsOrganized       Event[]                @relation("EventOrganizer")
   eventsApproved        Event[]                @relation("EventApprover")
   adsApproved           MarketAd[]             @relation("AdApprover")
+  moderatorPermission   ModeratorPermission?
 
   @@map("profiles")
 }
@@ -461,7 +467,7 @@ model MarketAd {
 
 model AdReport {
   id            String   @id @default(uuid()) @db.Char(36)
-  adId          BigInt   @map("ad_id")
+  adId          BigInt?  @map("ad_id")
   reporterId    String?  @map("reporter_id") @db.Char(36)
   reason        String   @db.Text
   details       String?  @db.Text
@@ -469,8 +475,8 @@ model AdReport {
   moderatorNote String?  @map("moderator_note") @db.Text
   createdAt     DateTime @default(now()) @map("created_at")
 
-  ad       MarketAd @relation(fields: [adId], references: [id], onDelete: Cascade)
-  reporter Profile? @relation(fields: [reporterId], references: [id], onDelete: SetNull)
+  ad       MarketAd? @relation(fields: [adId], references: [id], onDelete: SetNull)
+  reporter Profile?  @relation(fields: [reporterId], references: [id], onDelete: SetNull)
 
   @@index([adId])
   @@index([reporterId])
@@ -634,6 +640,26 @@ model GameCommentVote {
   @@index([commentId])
   @@index([userId])
   @@map("game_comment_votes")
+}
+
+// ============================================
+// MODERATOR PERMISSIONS
+// ============================================
+
+model ModeratorPermission {
+  id        String   @id @default(uuid()) @db.Char(36)
+  userId    String   @unique @map("user_id") @db.Char(36)
+  // panels: JSON array de strings, ex: ["reports","approvals","tickets","credits","bans"]
+  panels    String   @default("[]") @db.VarChar(2000)
+  // games: JSON array de strings, ex: ["all"] ou ["minecraft","fortnite"]
+  games     String   @default("[\"all\"]") @db.VarChar(2000)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("moderator_permissions")
 }
 
 // ============================================

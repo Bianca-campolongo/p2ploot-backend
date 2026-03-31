@@ -1,14 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireRole } from '@/lib/auth';
+import { requirePanel, getModeratorGameFilter } from '@/lib/auth';
 import { deepSerialize } from '@/lib/serialize';
 
-// GET /api/admin/approvals - List all pending content
-async function getPendingApprovals(req: NextRequest) {
+// GET /api/admin/approvals - List all pending content (filtered by moderator permission)
+async function getPendingApprovals(req: NextRequest, user: any) {
     try {
+        const gameFilter = getModeratorGameFilter(user);
+
         const [pendingAds, pendingEvents] = await Promise.all([
             prisma.marketAd.findMany({
-                where: { status: 'pending' },
+                where: { 
+                    status: 'pending',
+                    game: gameFilter // If admin/all, this is undefined (no filter). If restricted, { in: [...] }
+                },
                 include: {
                     user: {
                         select: {
@@ -21,7 +26,10 @@ async function getPendingApprovals(req: NextRequest) {
                 orderBy: { createdAt: 'desc' }
             }),
             prisma.event.findMany({
-                where: { status: 'pending' },
+                where: { 
+                    status: 'pending',
+                    game: gameFilter
+                },
                 include: {
                     organizer: {
                         select: {
@@ -45,4 +53,4 @@ async function getPendingApprovals(req: NextRequest) {
     }
 }
 
-export const GET = requireRole(['admin'])(getPendingApprovals);
+export const GET = requirePanel('approvals')(getPendingApprovals);

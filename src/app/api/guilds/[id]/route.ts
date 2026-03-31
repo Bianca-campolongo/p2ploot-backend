@@ -53,8 +53,25 @@ async function applyDkpDecayIfNeeded(guild: any) {
         }
     }
 
-    // If never decayed OR last decay was before the MOST RECENT scheduled time
-    if (!lastDecayAt || lastDecayAt < scheduledTime) {
+    // If never decayed before, just initialize the tracker so it waits for the NEXT scheduled time
+    // This prevents an immediate double-trigger for a past period right after configuration.
+    if (!lastDecayAt) {
+        console.log(`[DECAY] Initializing automatic decay tracking for guild ${guild.id}`);
+        try {
+            const newConfig = { ...dkpConfig, last_decay_at: new Date().toISOString() };
+            await prisma.guild.update({
+                where: { id: guild.id },
+                data: { dkpConfig: newConfig }
+            });
+            guild.dkpConfig = newConfig;
+        } catch (error) {
+            console.error(`[DECAY] Error initializing decay for guild ${guild.id}:`, error);
+        }
+        return guild;
+    }
+
+    // If last decay was before the MOST RECENT scheduled time
+    if (lastDecayAt < scheduledTime) {
         console.log(`[DECAY] Triggering automatic decay for guild ${guild.id}`);
         try {
             await prisma.$transaction(async (tx) => {

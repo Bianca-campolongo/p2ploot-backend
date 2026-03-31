@@ -8,8 +8,9 @@ async function moderateReport(
   { params }: { params: { id: string } }
 ) {
   try {
-    if (user.role !== 'admin') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // Permitir admin OU moderador com painel 'reports'
+    if (user.role !== 'admin' && !(user.role === 'moderator' && user.panels?.includes('reports'))) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
     const reportId = params.id;
@@ -19,11 +20,12 @@ async function moderateReport(
     // 1. Get the report to find ad and seller
     const report = await prisma.adReport.findUnique({
       where: { id: reportId },
-      include: { 
+    include: { 
         ad: {
           select: {
             id: true,
-            userId: true
+            userId: true,
+            game: true
           }
         }
       }
@@ -33,15 +35,25 @@ async function moderateReport(
       return NextResponse.json({ error: 'Report or ad not found' }, { status: 404 });
     }
 
+    // Check moderator game permissions
+    if (user.role === 'moderator' && !user.games?.includes('all') && report.ad.game && !user.games?.includes(report.ad.game)) {
+        return NextResponse.json({ error: 'Forbidden: You do not have permission for this game' }, { status: 403 });
+    }
+
     const sellerId = report.ad.userId;
     const adId = report.ad.id;
 
     // 2. Perform actions based on selection
-    if (action.includes('delete_ad')) {
-      await prisma.marketAd.delete({
-        where: { id: adId }
-      });
-    }
+
+    // IMPORTANTE: Marcar report como resolvido ANTES de deletar o anúncio,
+    // pois o delete do anúncio faz cascade delete no report (pelo schema Prisma).
+    await prisma.adReport.update({
+      where: { id: reportId },
+      data: { 
+        status: 'resolved',
+        moderatorNote: moderatorNote || reason
+      }
+    });
 
     if (action.includes('reset_reputation')) {
       await prisma.profile.update({
@@ -50,14 +62,25 @@ async function moderateReport(
       });
     }
 
-    // 3. Mark report as resolved
-    await prisma.adReport.update({
-      where: { id: reportId },
-      data: { 
-        status: 'resolved',
-        moderatorNote: moderatorNote || reason
-      }
-    });
+    if (action.includes('ban_user')) {
+      const reason = body.reason || 'Violação dos Termos de Uso';
+      await prisma.profile.update({
+        where: { id: sellerId },
+        data: {
+          isBanned: true,
+          banReason: reason,
+          bannedAt: new Date(),
+        },
+      });
+      console.log(`[Moderation] User ${sellerId} banned. Reason: ${reason}`);
+    }
+
+    if (action.includes('delete_ad')) {
+      await prisma.marketAd.delete({
+        where: { id: adId }
+      });
+    }
+
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

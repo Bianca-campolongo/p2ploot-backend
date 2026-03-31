@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireRole, AuthUser } from '@/lib/auth';
+import { requirePanel, AuthUser } from '@/lib/auth';
 
 const AD_CREATION_COST = 1;
 const EVENT_CREATION_COST = 5;
@@ -21,9 +21,9 @@ async function handleApprovalAction(
         }
 
         if (type === 'market') {
-            return await handleMarketApproval(id, action, user.id, reason);
+            return await handleMarketApproval(id, action, user, reason);
         } else if (type === 'event') {
-            return await handleEventApproval(id, action, user.id, reason);
+            return await handleEventApproval(id, action, user, reason);
         } else {
             return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
         }
@@ -34,15 +34,21 @@ async function handleApprovalAction(
     }
 }
 
-async function handleMarketApproval(id: string, action: string, adminId: string, reason?: string) {
+async function handleMarketApproval(id: string, action: string, user: AuthUser, reason?: string) {
     const adId = BigInt(id);
     
     const ad = await prisma.marketAd.findUnique({
         where: { id: adId },
-        select: { userId: true, status: true, title: true }
+        select: { userId: true, status: true, title: true, game: true }
     });
 
     if (!ad) return NextResponse.json({ error: 'Ad not found' }, { status: 404 });
+    
+    // Check moderator game permissions
+    if (user.role === 'moderator' && !user.games?.includes('all') && ad.game && !user.games?.includes(ad.game)) {
+        return NextResponse.json({ error: 'Forbidden: You do not have permission for this game' }, { status: 403 });
+    }
+
     if (ad.status !== 'pending') return NextResponse.json({ error: 'Ad is not pending' }, { status: 400 });
 
     if (action === 'approve') {
@@ -54,7 +60,7 @@ async function handleMarketApproval(id: string, action: string, adminId: string,
             data: {
                 status: 'active',
                 approvedAt: new Date(),
-                approvedById: adminId,
+                approvedById: user.id,
                 expiresAt: expiresAt
             }
         });
@@ -98,13 +104,19 @@ async function handleMarketApproval(id: string, action: string, adminId: string,
     }
 }
 
-async function handleEventApproval(id: string, action: string, adminId: string, reason?: string) {
+async function handleEventApproval(id: string, action: string, user: AuthUser, reason?: string) {
     const event = await prisma.event.findUnique({
         where: { id },
-        select: { organizerId: true, status: true, title: true }
+        select: { organizerId: true, status: true, title: true, game: true }
     });
 
     if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+
+    // Check moderator game permissions
+    if (user.role === 'moderator' && !user.games?.includes('all') && event.game && !user.games?.includes(event.game)) {
+        return NextResponse.json({ error: 'Forbidden: You do not have permission for this game' }, { status: 403 });
+    }
+
     if (event.status !== 'pending') return NextResponse.json({ error: 'Event is not pending' }, { status: 400 });
 
     if (action === 'approve') {
@@ -113,7 +125,7 @@ async function handleEventApproval(id: string, action: string, adminId: string, 
             data: {
                 status: 'upcoming',
                 approvedAt: new Date(),
-                approvedById: adminId,
+                approvedById: user.id,
             }
         });
         return NextResponse.json({ message: 'Approved', data: updated });
@@ -123,7 +135,7 @@ async function handleEventApproval(id: string, action: string, adminId: string, 
             const updated = await tx.event.update({
                 where: { id },
                 data: {
-                    status: 'cancelled', // Or rejected? 
+                    status: 'rejected',
                 }
             });
 
@@ -155,4 +167,4 @@ async function handleEventApproval(id: string, action: string, adminId: string, 
     }
 }
 
-export const POST = requireRole(['admin'])(handleApprovalAction);
+export const POST = requirePanel('approvals')(handleApprovalAction);

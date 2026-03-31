@@ -11,18 +11,15 @@ const updateRequestSchema = z.object({
     adminNote: z.string().optional(),
 });
 
-// PUT - Approve or reject credit request (admin only)
+// PUT - Approve or reject credit request (admin or moderator with 'credits' panel)
 async function updateHandler(req: NextRequest, user: any) {
     try {
-        // Check if user is admin
-        const profile = await prisma.profile.findUnique({
-            where: { id: user.id },
-            select: { role: true },
-        });
+        // Check if user is admin or moderator with credit access
+        const canManage = user.role === 'admin' || (user.role === 'moderator' && user.panels?.includes('credits'));
 
-        if (profile?.role !== 'admin') {
+        if (!canManage) {
             return NextResponse.json(
-                { error: 'Unauthorized - Admin access required' },
+                { error: 'Unauthorized - Admin or Credit Moderator access required' },
                 { status: 403 }
             );
         }
@@ -200,14 +197,12 @@ async function getHandler(req: NextRequest, user: any) {
             console.warn(`[API] Could not fetch messages:`, msgError.message);
         }
 
-        // Check if user is owner or admin
-        const userProfile = await prisma.profile.findUnique({
-            where: { id: user.id },
-            select: { role: true },
-        });
+        // Check if user is owner or privileged (admin/moderator with credit access)
+        const canSeeDetailed = creditRequest.userId === user.id || 
+                             user.role === 'admin' || 
+                             (user.role === 'moderator' && user.panels?.includes('credits'));
 
-        const isAdmin = userProfile?.role === 'admin';
-        if (creditRequest.userId !== user.id && !isAdmin) {
+        if (!canSeeDetailed) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
 

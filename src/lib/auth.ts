@@ -7,6 +7,9 @@ export interface AuthUser {
   email?: string | null;
   role: string;
   walletAddress?: string | null;
+  // Moderator-specific permissions (only populated when role === 'moderator')
+  panels?: string[];
+  games?: string[];
 }
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-production';
@@ -62,6 +65,7 @@ export async function getAuthUser(request: NextRequest): Promise<AuthUser | null
         email: true,
         role: true,
         walletAddress: true,
+        isBanned: true,
       },
     });
 
@@ -69,12 +73,39 @@ export async function getAuthUser(request: NextRequest): Promise<AuthUser | null
       return null;
     }
 
-    return {
+    if (user.isBanned) {
+      return null;
+    }
+
+    const authUser: AuthUser = {
       id: user.id,
       email: user.email,
       role: user.role,
       walletAddress: user.walletAddress,
     };
+
+    // Inclui permissões de moderador no objeto de auth
+    // Query separada com try/catch para ser resiliente a migration pendente
+    if (user.role === 'moderator') {
+      try {
+        const modPerm = await prisma.moderatorPermission.findUnique({
+          where: { userId: user.id },
+        });
+        if (modPerm) {
+          authUser.panels = JSON.parse(modPerm.panels);
+          authUser.games = JSON.parse(modPerm.games);
+        } else {
+          authUser.panels = [];
+          authUser.games = ['all'];
+        }
+      } catch {
+        // Tabela pode não existir em ambiente local sem migration
+        authUser.panels = [];
+        authUser.games = ['all'];
+      }
+    }
+
+    return authUser;
   } catch (error) {
     console.error('Error getting auth user:', error);
     return null;
@@ -114,4 +145,35 @@ export function requireRole(roles: string[]) {
       return handler(req, user, context);
     });
   };
+}
+
+/**
+ * requirePanel — aceita admin OU moderador com o painel especificado liberado.
+ * Uso nas rotas: substituir `if (user.role !== 'admin')` por este helper.
+ */
+export function requirePanel(panel: string) {
+  return (handler: (req: NextRequest, user: AuthUser, context?: any) => Promise<Response>) => {
+    return requireAuth(async (req, user, context) => {
+      if (user.role === 'admin') {
+        return handler(req, user, context);
+      }
+
+      if (user.role === 'moderator' && user.panels?.includes(panel)) {
+        return handler(req, user, context);
+      }
+
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    });
+  };
+}
+
+/**
+ * getModeratorGameFilter — retorna um filtro Prisma de `game` para moderadores.
+ * Retorna `undefined` para admin ou moderador com "all", e um filtro `{ in: [...] }`
+ * para moderadores restritos a jogos específicos.
+ */
+export function getModeratorGameFilter(user: AuthUser): { in: string[] } | undefined {
+  if (user.role === 'admin') return undefined;
+  if (!user.games || user.games.includes('all')) return undefined;
+  return { in: user.games };
 }
