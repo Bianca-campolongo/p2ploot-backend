@@ -27,6 +27,7 @@ async function handler(req: NextRequest, user: any) {
         reputationScore: true,
         createdAt: true,
         updatedAt: true,
+        moderatorPermission: true,
         guildMembers: {
           include: {
             guild: {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, getAuthUser } from '@/lib/auth';
 import { z } from 'zod';
 import { deepSerialize } from '@/lib/serialize';
 
@@ -10,15 +10,48 @@ async function listAuctions(req: NextRequest, params: { id: string }) {
         const guildId = BigInt(params.id);
         const { searchParams } = new URL(req.url);
         const status = searchParams.get('status'); // 'warehouse', 'active', 'upcoming', 'closed'
+        const page = parseInt(searchParams.get('page') || '1');
+        const limit = parseInt(searchParams.get('limit') || '20');
+        const favoritesOnly = searchParams.get('favoritesOnly') === 'true';
+        const search = searchParams.get('search');
+        const delivered = searchParams.get('delivered');
+        const skip = (page - 1) * limit;
 
         const where: any = { guildId };
         if (status) {
             where.status = status;
         }
 
+        if (delivered === 'true') where.delivered = true;
+        if (delivered === 'false') where.delivered = false;
+
+        if (search) {
+            where.OR = [
+                { item: { name: { contains: search } } }
+            ];
+            const memberMatches = await prisma.guildMember.findMany({
+                where: { guildId, characterName: { contains: search } },
+                select: { memberId: true }
+            });
+            if (memberMatches.length > 0) {
+                where.OR.push({ winnerId: { in: memberMatches.map(m => m.memberId) } });
+            }
+        }
+
+        if (favoritesOnly) {
+            const user = await getAuthUser(req);
+            if (user) {
+                const favorites = await prisma.userItemFavorite.findMany({
+                    where: { userId: user.id },
+                    select: { itemId: true }
+                });
+                where.itemId = { in: favorites.map(f => f.itemId) };
+            }
+        }
+
         // Auto-update statuses before fetching
         const now = new Date();
-        
+
         // 1. Start upcoming auctions
         await prisma.guildAuction.updateMany({
             where: {
@@ -48,7 +81,7 @@ async function listAuctions(req: NextRequest, params: { id: string }) {
                 endTime: { lte: now },
                 winnerId: null
             },
-            data: { 
+            data: {
                 status: 'warehouse',
                 startTime: null,
                 endTime: null,
@@ -57,37 +90,42 @@ async function listAuctions(req: NextRequest, params: { id: string }) {
             }
         });
 
-        const auctions = await prisma.guildAuction.findMany({
-            where,
-            include: {
-                item: {
-                    select: {
-                        id: true,
-                        name: true,
-                        description: true,
-                        imageUrl: true,
-                        isNft: true,
-                        itemType: true,
-                        rarity: true
-                    }
-                },
-                winner: {
-                    select: {
-                        id: true,
-                        username: true,
-                    }
-                },
-                bids: {
-                    orderBy: { createdAt: 'desc' },
-                    include: {
-                        bidder: {
-                            select: { id: true, username: true }
+        const [totalItems, auctions] = await Promise.all([
+            prisma.guildAuction.count({ where }),
+            prisma.guildAuction.findMany({
+                where,
+                include: {
+                    item: {
+                        select: {
+                            id: true,
+                            name: true,
+                            description: true,
+                            imageUrl: true,
+                            isNft: true,
+                            itemType: true,
+                            rarity: true
+                        }
+                    },
+                    winner: {
+                        select: {
+                            id: true,
+                            username: true,
+                        }
+                    },
+                    bids: {
+                        orderBy: { createdAt: 'desc' },
+                        include: {
+                            bidder: {
+                                select: { id: true, username: true }
+                            }
                         }
                     }
-                }
-            },
-            orderBy: { createdAt: 'desc' }
-        });
+                },
+                orderBy: { createdAt: 'desc' },
+                skip,
+                take: limit
+            })
+        ]);
 
         // Resolve character names instead of global usernames
         const userIdsToFetch = new Set<string>();
@@ -129,7 +167,15 @@ async function listAuctions(req: NextRequest, params: { id: string }) {
             };
         });
 
-        return NextResponse.json(deepSerialize({ auctions: formattedAuctions }));
+        return NextResponse.json(deepSerialize({ 
+            auctions: formattedAuctions,
+            pagination: {
+                total: totalItems,
+                page,
+                limit,
+                totalPages: Math.ceil(totalItems / limit)
+            }
+        }));
     } catch (error) {
         console.error('Error fetching auctions:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -187,7 +233,7 @@ async function placeBid(req: NextRequest, user: any, params: { id: string }) {
         // Validate bid amount
         const currentBid = Number(auction.currentBid) || 0;
         const minIncrement = Number(auction.minBidIncrement) || 0;
-        
+
         // Match frontend rounding logic (Precision fix)
         const minAdded = Math.round(((currentBid * minIncrement / 100) + Number.EPSILON) * 100) / 100;
         const minRequired = currentBid + minAdded;
@@ -208,7 +254,7 @@ async function placeBid(req: NextRequest, user: any, params: { id: string }) {
 
         const currentBidValue = Number(auction.currentBid) || 0;
         const balance = Number(member.dkpBalance) || 0;
-        
+
         // If the bidder is the current winner, they only need the difference in their liquid balance
         const effectiveCost = bidderId === auction.winnerId ? amount - currentBidValue : amount;
 

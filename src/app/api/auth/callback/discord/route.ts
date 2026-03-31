@@ -206,6 +206,23 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Verificar banimento por discordId OU email antes de gerar token
+    const isBannedByDiscord = user.isBanned;
+    const isBannedByEmail = !isBannedByDiscord && discordUser.email
+      ? (await prisma.profile.findFirst({
+          where: { email: discordUser.email, isBanned: true },
+          select: { id: true }
+        })) !== null
+      : false;
+
+    if (isBannedByDiscord || isBannedByEmail) {
+      console.log('[Discord Callback] 🚫 Usuário banido tentou logar:', user.id);
+      const frontendUrl = getFrontendUrl(request);
+      return Response.redirect(
+        new URL('/?error=permanently_banned', frontendUrl)
+      );
+    }
+
     // Gerar tokens
     const token = generateToken({
       id: user.id,

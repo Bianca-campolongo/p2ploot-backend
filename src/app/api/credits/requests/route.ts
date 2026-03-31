@@ -49,28 +49,23 @@ async function createHandler(req: NextRequest, user: any) {
     }
 }
 
-// GET - List credit requests (admin sees all, user sees their own)
+// GET - List credit requests (admin/moderator with 'credits' panel sees all, user sees their own)
 async function listHandler(req: NextRequest, user: any) {
     try {
         const { searchParams } = new URL(req.url);
         const status = searchParams.get('status');
 
-        // Check if user is admin
-        const profile = await prisma.profile.findUnique({
-            where: { id: user.id },
-            select: { role: true },
-        });
-
-        const isAdmin = profile?.role === 'admin';
+        // Check if user is admin or moderator with credit access
+        const canSeeAll = user.role === 'admin' || (user.role === 'moderator' && user.panels?.includes('credits'));
 
         const where: any = {};
 
-        // Non-admins can only see their own requests
-        if (!isAdmin) {
+        // Non-privileged users can only see their own requests
+        if (!canSeeAll) {
             where.userId = user.id;
         }
 
-        // Filter by status if provided
+        // Filter by status if provided (admin/moderator usually filter by pending)
         if (status) {
             where.status = status;
         }
@@ -95,7 +90,9 @@ async function listHandler(req: NextRequest, user: any) {
         const serialized = requests.map(r => ({
             ...r,
             id: r.id.toString(),
+            userId: r.userId,
             amount: r.amount.toString(),
+            created_at: r.createdAt.toISOString(),
         }));
 
         return NextResponse.json(serialized);

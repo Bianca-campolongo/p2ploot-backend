@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requirePanel, getModeratorGameFilter } from '@/lib/auth';
 import { z } from 'zod';
 import { deepSerialize } from '@/lib/serialize';
 
@@ -49,11 +49,15 @@ async function createReport(req: NextRequest, user: any) {
     }
 }
 
-// GET /api/reports/ads - List reports (Admin)
+// GET /api/reports/ads - List reports (Admin or Moderator with 'reports' panel)
 async function getReports(req: NextRequest, user: any) {
     try {
-        // TODO: specific admin check. For now, authenticated users.
+        const gameFilter = getModeratorGameFilter(user);
+
         const reports = await prisma.adReport.findMany({
+            where: gameFilter ? {
+                ad: { game: gameFilter }
+            } : undefined,
             include: {
                 ad: {
                     select: {
@@ -61,7 +65,8 @@ async function getReports(req: NextRequest, user: any) {
                         title: true,
                         price: true,
                         imageUrl: true,
-                        userId: true
+                        userId: true,
+                        game: true,
                     }
                 },
                 reporter: {
@@ -78,5 +83,5 @@ async function getReports(req: NextRequest, user: any) {
     }
 }
 
-export const POST = (req: NextRequest) => requireAuth(createReport)(req);
-export const GET = (req: NextRequest) => requireAuth(getReports)(req);
+export const POST = requireAuth(createReport);
+export const GET = requirePanel('reports')(getReports);
