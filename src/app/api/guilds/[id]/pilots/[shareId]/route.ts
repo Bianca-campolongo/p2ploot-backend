@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
+import { isGuildManager } from '@/lib/guildAuth';
 import { z } from 'zod';
 
 const actionSchema = z.object({
@@ -15,23 +16,9 @@ async function handleAction(req: NextRequest, user: any, params: { id: string; s
         const body = await req.json();
         const { action } = actionSchema.parse(body);
 
-        // Check if user is guild owner
-        const guild = await prisma.guild.findUnique({
-            where: { id: guildId },
-            select: { ownerId: true, ownerAddress: true }
-        });
-
-        if (!guild) {
-            return NextResponse.json({ error: 'Guild not found' }, { status: 404 });
-        }
-
-        const callingMember = await prisma.guildMember.findUnique({
-            where: { guildId_memberId: { guildId, memberId: user.id } }
-        });
-        const isOwner = guild.ownerId === user.id || guild.ownerAddress === user.id;
-        const isAdmin = callingMember?.role === 'admin';
-
-        if (!isOwner && !isAdmin) {
+        // Permission check — includes pilots with guildRole='admin'
+        const hasAccess = await isGuildManager(guildId, user.id);
+        if (!hasAccess) {
             return NextResponse.json({ error: 'Only guild leader and admins can approve pilots' }, { status: 403 });
         }
 

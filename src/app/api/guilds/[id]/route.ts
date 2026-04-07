@@ -185,6 +185,7 @@ export async function GET(
                         owner: { select: { id: true, username: true, email: true } },
                         pilot: { select: { id: true, username: true, email: true } },
                     }
+                    // permissions field is included by default (no select limiting it)
                 },
                 _count: {
                     select: { members: true },
@@ -208,8 +209,9 @@ export async function GET(
         // Pilot check
         let isPilot = false;
         let pilotedMember = null;
+        let pilotShare: any = null;
         if (userId && !memberRecord) {
-             const pilotShare = await prisma.guildCharacterShare.findFirst({
+             pilotShare = await prisma.guildCharacterShare.findFirst({
                 where: {
                     sharedWithUserId: userId,
                     guildId: guildId,
@@ -218,12 +220,18 @@ export async function GET(
             });
             if (pilotShare) {
                 isPilot = true;
-                pilotedMember = guild.members.find(m => m.memberId === pilotShare.guildMemberId);
+                pilotedMember = guild.members.find((m: any) => m.memberId === pilotShare.guildMemberId);
             }
         }
 
         const isMember = !!memberRecord || isOwner || isPilot;
-        const userRole = isOwner ? 'owner' : (isPilot ? 'pilot' : (memberRecord?.role || 'none'));
+        // If the pilot has been granted a guild role via permissions.guildRole, use it
+        const pilotGuildRole = isPilot && pilotShare?.permissions
+            ? (typeof pilotShare.permissions === 'string'
+                ? JSON.parse(pilotShare.permissions)
+                : pilotShare.permissions)?.guildRole
+            : null;
+        const userRole = isOwner ? 'owner' : (pilotGuildRole || (isPilot ? 'pilot' : (memberRecord?.role || 'none')));
 
         console.log(`[GET /api/guilds/${params.id}] Step 3: Formatting & Winners`);
         

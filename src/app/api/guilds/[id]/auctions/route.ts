@@ -200,11 +200,12 @@ async function placeBid(req: NextRequest, user: any, params: { id: string }) {
 
         // If acting as another member (Pilot Mode)
         if (actingMemberId && actingMemberId !== user.id) {
-            // Verify pilot permission
+            // GuildCharacterShare.guildMemberId = Profile.id of the character owner (per schema)
+            // actingMemberId = Profile.id of the character owner the pilot is acting as
             const pilotShare = await prisma.guildCharacterShare.findFirst({
                 where: {
-                    guildMemberId: actingMemberId, // The owner
-                    sharedWithUserId: user.id,     // The pilot
+                    guildMemberId: actingMemberId, // Profile.id of the owner
+                    sharedWithUserId: user.id,     // Profile.id of the pilot
                     guildId: guildId,
                     status: 'approved'
                 }
@@ -222,7 +223,7 @@ async function placeBid(req: NextRequest, user: any, params: { id: string }) {
             include: { item: true }
         });
 
-        if (!auction || auction.guildId !== guildId) {
+        if (!auction || auction.guildId.toString() !== guildId.toString()) {
             return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
         }
 
@@ -267,9 +268,8 @@ async function placeBid(req: NextRequest, user: any, params: { id: string }) {
             // 1. Refund previous highest bidder if exists (even if it's the same user)
             if (auction.winnerId) {
                 const prevBid = Number(auction.currentBid);
-                await tx.$executeRawUnsafe(
-                    `UPDATE guild_members SET dkp_balance = dkp_balance + ${prevBid} WHERE guild_id = ${guildId} AND member_id = '${auction.winnerId}'`
-                );
+                // Use parameterized query to prevent SQL injection
+                await tx.$executeRaw`UPDATE guild_members SET dkp_balance = dkp_balance + ${prevBid} WHERE guild_id = ${guildId} AND member_id = ${auction.winnerId}`;
 
                 // Log refund
                 await tx.guildDkpLedger.create({
@@ -284,10 +284,8 @@ async function placeBid(req: NextRequest, user: any, params: { id: string }) {
                 });
             }
 
-            // 2. Deduct from bidder using raw SQL
-            await tx.$executeRawUnsafe(
-                `UPDATE guild_members SET dkp_balance = dkp_balance - ${amount} WHERE guild_id = ${guildId} AND member_id = '${bidderId}'`
-            );
+            // 2. Deduct from bidder — parameterized to prevent SQL injection
+            await tx.$executeRaw`UPDATE guild_members SET dkp_balance = dkp_balance - ${amount} WHERE guild_id = ${guildId} AND member_id = ${bidderId}`;
 
             // Record new bid
             await tx.guildBid.create({
