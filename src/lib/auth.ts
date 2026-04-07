@@ -12,7 +12,11 @@ export interface AuthUser {
   games?: string[];
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
+  throw new Error('FATAL: JWT_SECRET environment variable is not set. Server cannot start safely.');
+}
+const jwtSecret = JWT_SECRET || 'dev-only-fallback-secret-do-not-use-in-production';
 
 export function generateToken(user: AuthUser): string {
   return jwt.sign(
@@ -21,7 +25,7 @@ export function generateToken(user: AuthUser): string {
       email: user.email,
       role: user.role,
     },
-    JWT_SECRET,
+    jwtSecret,
     { expiresIn: '7d' }
   );
 }
@@ -29,14 +33,14 @@ export function generateToken(user: AuthUser): string {
 export function generateRefreshToken(user: AuthUser): string {
   return jwt.sign(
     { id: user.id },
-    process.env.JWT_REFRESH_SECRET || JWT_SECRET,
+    process.env.JWT_REFRESH_SECRET || jwtSecret,
     { expiresIn: '30d' }
   );
 }
 
 export function verifyToken(token: string): AuthUser | null {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as AuthUser;
+    const decoded = jwt.verify(token, jwtSecret) as AuthUser;
     return decoded;
   } catch (error) {
     return null;

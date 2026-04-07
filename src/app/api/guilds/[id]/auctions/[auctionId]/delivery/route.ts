@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
+import { isGuildManager } from '@/lib/guildAuth';
 import { z } from 'zod';
 
 const deliverySchema = z.object({
@@ -31,28 +32,24 @@ async function toggleDelivery(req: NextRequest, user: any) {
 
         const { delivered } = validation.data;
 
-        // Check user is member of guild with manage permissions
-        const member = await prisma.guildMember.findFirst({
-            where: {
-                guildId: BigInt(guildId),
-                memberId: user.id
-            }
-        });
-
-        // Also check if user is the guild owner
-        const guild = await prisma.guild.findUnique({
-            where: { id: BigInt(guildId) },
-            select: { ownerId: true }
-        });
-
-        const isOwner = guild?.ownerId === user.id;
-
-        if (!isOwner && (!member || !['owner', 'officer'].includes(member.role))) {
+        // Check permissions — includes pilots with guildRole='admin'
+        const hasAccess = await isGuildManager(BigInt(guildId), user.id);
+        if (!hasAccess) {
             return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
         }
 
+        // Verify the auction belongs to the specified guild
+        const auction = await prisma.guildAuction.findUnique({
+            where: { id: auctionId },
+            select: { id: true, guildId: true }
+        });
+
+        if (!auction || auction.guildId.toString() !== guildId) {
+            return NextResponse.json({ error: 'Auction not found in this guild' }, { status: 404 });
+        }
+
         // Update the delivered flag (not the status)
-        const auction = await prisma.guildAuction.update({
+        const updated = await prisma.guildAuction.update({
             where: { id: auctionId },
             data: { delivered }
         });
@@ -60,14 +57,14 @@ async function toggleDelivery(req: NextRequest, user: any) {
         return NextResponse.json({
             success: true,
             auction: {
-                id: auction.id.toString(),
-                delivered: auction.delivered
+                id: updated.id.toString(),
+                delivered: updated.delivered
             }
         });
 
     } catch (error: any) {
         console.error('[API] Error toggling delivery:', error);
-        return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }
 }
 

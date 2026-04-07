@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
+import { isGuildManager } from '@/lib/guildAuth';
 import { z } from 'zod';
 
 const patchSchema = z.object({
@@ -15,20 +16,9 @@ async function handler(req: NextRequest, user: any, params: { id: string; reques
         const body = await req.json();
         const { status, characterName } = patchSchema.parse(body);
 
-        // Permission check: Owner or Admin
-        const callingMember = await prisma.guildMember.findUnique({
-            where: { guildId_memberId: { guildId, memberId: user.id } }
-        });
-
-        const guild = await prisma.guild.findUnique({
-            where: { id: guildId },
-            select: { ownerId: true, ownerAddress: true }
-        });
-
-        const isOwner = guild && (guild.ownerId === user.id || guild.ownerAddress === user.id);
-        const isAdmin = callingMember?.role === 'admin';
-
-        if (!isOwner && !isAdmin) {
+        // Permission check — includes pilots with guildRole='admin'
+        const hasAccess = await isGuildManager(guildId, user.id);
+        if (!hasAccess) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
 

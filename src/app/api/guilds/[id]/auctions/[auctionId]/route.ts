@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
+import { isGuildManager } from '@/lib/guildAuth';
 
 // DELETE - Delete a closed auction (History cleanup)
 async function deleteAuctionHistory(req: NextRequest, user: any, params: { id: string, auctionId: string }) {
@@ -8,25 +9,10 @@ async function deleteAuctionHistory(req: NextRequest, user: any, params: { id: s
         const guildId = BigInt(params.id);
         const auctionId = params.auctionId;
 
-        // Check permissions (Owner/Admin)
-        const callingMember = await prisma.guildMember.findUnique({
-            where: {
-                guildId_memberId: {
-                    guildId,
-                    memberId: user.id
-                }
-            }
-        });
-
-        const guild = await prisma.guild.findUnique({ where: { id: guildId }, select: { ownerId: true, ownerAddress: true } });
-        const isOwner = guild && (guild.ownerId === user.id || guild.ownerAddress === user.id);
-
-        if (!callingMember && !isOwner) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-        }
-
-        if (callingMember && !['owner'].includes(callingMember.role) && !isOwner) {
-            return NextResponse.json({ error: 'Unauthorized. Only owner can delete auction history.' }, { status: 403 });
+        // Check permissions — includes pilots with guildRole='admin'
+        const hasAccess = await isGuildManager(guildId, user.id);
+        if (!hasAccess) {
+            return NextResponse.json({ error: 'Unauthorized. Only owner or admins can delete auction history.' }, { status: 403 });
         }
 
         // Get auction

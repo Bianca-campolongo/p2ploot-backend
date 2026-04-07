@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
+import { isGuildManager } from '@/lib/guildAuth';
 import { z } from 'zod';
 
 const fieldSchema = z.object({
@@ -40,18 +41,9 @@ async function createField(req: NextRequest, user: any, params: { id: string }) 
         const body = await req.json();
         const data = fieldSchema.parse(body);
 
-        // Permission check
-        const guild = await prisma.guild.findUnique({
-            where: { id: guildId },
-            select: { ownerId: true, ownerAddress: true }
-        });
-        const isOwner = guild && (guild.ownerId === user.id || guild.ownerAddress === user.id);
-        const callingMember = await prisma.guildMember.findUnique({
-            where: { guildId_memberId: { guildId, memberId: user.id } }
-        });
-        const isAdmin = callingMember?.role === 'admin';
-
-        if (!isOwner && !isAdmin) {
+        // Permission check — includes pilots with guildRole='admin'
+        const hasAccess = await isGuildManager(guildId, user.id);
+        if (!hasAccess) {
             return NextResponse.json({ error: 'Only owner and admins can manage fields' }, { status: 403 });
         }
 
@@ -97,18 +89,9 @@ async function deleteField(req: NextRequest, user: any, params: { id: string }) 
             return NextResponse.json({ error: 'Field ID required' }, { status: 400 });
         }
 
-        // Permission check
-        const guild = await prisma.guild.findUnique({
-            where: { id: guildId },
-            select: { ownerId: true, ownerAddress: true }
-        });
-        const isOwner = guild && (guild.ownerId === user.id || guild.ownerAddress === user.id);
-        const callingMember = await prisma.guildMember.findUnique({
-            where: { guildId_memberId: { guildId, memberId: user.id } }
-        });
-        const isAdmin = callingMember?.role === 'admin';
-
-        if (!isOwner && !isAdmin) {
+        // Permission check — includes pilots with guildRole='admin'
+        const hasAccess = await isGuildManager(guildId, user.id);
+        if (!hasAccess) {
             return NextResponse.json({ error: 'Only owner and admins can manage fields' }, { status: 403 });
         }
 
@@ -134,18 +117,9 @@ async function reorderFields(req: NextRequest, user: any, params: { id: string }
             return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
         }
 
-        // Permission check
-        const guild = await prisma.guild.findUnique({
-            where: { id: guildId },
-            select: { ownerId: true, ownerAddress: true }
-        });
-        const isOwner = guild && (guild.ownerId === user.id || guild.ownerAddress === user.id);
-        const callingMember = await prisma.guildMember.findUnique({
-            where: { guildId_memberId: { guildId, memberId: user.id } }
-        });
-        const isAdmin = callingMember?.role === 'admin';
-
-        if (!isOwner && !isAdmin) {
+        // Permission check — includes pilots with guildRole='admin'
+        const hasAccess = await isGuildManager(guildId, user.id);
+        if (!hasAccess) {
             return NextResponse.json({ error: 'Only owner and admins can manage fields' }, { status: 403 });
         }
 
@@ -188,18 +162,9 @@ async function updateField(req: NextRequest, user: any, params: { id: string }) 
 
         const data = updateSchema.parse(body);
 
-        // Permission check
-        const guild = await prisma.guild.findUnique({
-            where: { id: guildId },
-            select: { ownerId: true, ownerAddress: true }
-        });
-        const isOwner = guild && (guild.ownerId === user.id || guild.ownerAddress === user.id);
-        const callingMember = await prisma.guildMember.findUnique({
-            where: { guildId_memberId: { guildId, memberId: user.id } }
-        });
-        const isAdmin = callingMember?.role === 'admin';
-
-        if (!isOwner && !isAdmin) {
+        // Permission check — includes pilots with guildRole='admin'
+        const hasAccess = await isGuildManager(guildId, user.id);
+        if (!hasAccess) {
             return NextResponse.json({ error: 'Only owner and admins can manage fields' }, { status: 403 });
         }
 

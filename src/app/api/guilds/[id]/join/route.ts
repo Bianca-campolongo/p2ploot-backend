@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
-import fs from 'fs';
-import path from 'path';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,12 +74,7 @@ async function handler(req: NextRequest, user: any, context: { params: { id: str
         return NextResponse.json({ message: 'Join request sent' });
     } catch (error: any) {
         console.error('Error joining guild:', error);
-        try {
-            const logPath = path.join(process.cwd(), 'debug-api-error.log');
-            fs.appendFileSync(logPath, `[${new Date().toISOString()}] POST JOIN ERROR: ${error.stack}\n`);
-        } catch (e) {}
-
-        return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }
 

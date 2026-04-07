@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
+import { isGuildManager } from '@/lib/guildAuth';
 import { z } from 'zod';
 
 // Schema for Distribution
@@ -21,6 +22,18 @@ async function getHistory(req: NextRequest, user: any, params: { id: string }) {
         const memberId = searchParams.get('memberId');
         const limit = parseInt(searchParams.get('limit') || '50');
         const offset = parseInt(searchParams.get('offset') || '0');
+
+        // Verify caller is a member or owner of the guild
+        const guild = await prisma.guild.findUnique({ where: { id: guildId }, select: { ownerId: true, ownerAddress: true } });
+        const callerIsOwner = guild && (guild.ownerId === user.id || guild.ownerAddress === user.id);
+        if (!callerIsOwner) {
+            const callerMember = await prisma.guildMember.findUnique({
+                where: { guildId_memberId: { guildId, memberId: user.id } }
+            });
+            if (!callerMember) {
+                return NextResponse.json({ error: 'Forbidden: not a guild member' }, { status: 403 });
+            }
+        }
 
         const where: any = { guildId };
         if (memberId) {
@@ -82,24 +95,10 @@ async function distribute(req: NextRequest, user: any, params: { id: string }) {
             return NextResponse.json({ success: true, count: 0 });
         }
 
-        // Check permissions (Owner/Admin)
-        const callingMember = await prisma.guildMember.findUnique({
-            where: {
-                guildId_memberId: {
-                    guildId,
-                    memberId: user.id
-                }
-            }
-        });
-
-        if (!callingMember || !['owner', 'admin'].includes(callingMember.role)) {
-            // Also check if user is the actual guild owner (for owner role fallback)
-            const guild = await prisma.guild.findUnique({ where: { id: guildId }, select: { ownerId: true, ownerAddress: true } });
-            const isOwner = guild && (guild.ownerId === user.id || guild.ownerAddress === user.id);
-
-            if (!isOwner) {
-                return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-            }
+        // Check permissions (Owner/Admin) — also works for pilots with admin permissions
+        const hasAccess = await isGuildManager(guildId, user.id);
+        if (!hasAccess) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
 
         // Transaction: Insert Ledger + Update Balances
@@ -116,11 +115,9 @@ async function distribute(req: NextRequest, user: any, params: { id: string }) {
                 }))
             });
 
-            // 2. Update Member Balances using raw SQL to ensure Decimal precision
+            // 2. Update Member Balances using parameterized queries to prevent SQL injection
             for (const entry of entries) {
-                await tx.$executeRawUnsafe(
-                    `UPDATE guild_members SET dkp_balance = dkp_balance + ${entry.amount} WHERE guild_id = ${guildId} AND member_id = '${entry.memberId}'`
-                );
+                await tx.$executeRaw`UPDATE guild_members SET dkp_balance = dkp_balance + ${entry.amount} WHERE guild_id = ${guildId} AND member_id = ${entry.memberId}`;
             }
         });
 

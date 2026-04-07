@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { z } from 'zod';
 
-// PUT - Update member profile
+// PUT - Update member profile or grant guild role to a pilot
 const updateSchema = z.object({
     characterName: z.string().optional(),
     customValues: z.record(z.any()).optional(),
@@ -32,11 +32,11 @@ async function updateMember(req: NextRequest, user: any, params: { id: string; m
 
         let isPilot = false;
         if (!isOwner && !isAdmin && !isSelf) {
-            // Check if user is an approved pilot for targetMemberId
+            // GuildCharacterShare.guildMemberId = Profile.id of the character owner
             const pilotShare = await prisma.guildCharacterShare.findFirst({
                 where: {
-                    guildMemberId: targetMemberId, // The member being edited
-                    sharedWithUserId: user.id,     // The pilot trying to edit
+                    guildMemberId: targetMemberId,
+                    sharedWithUserId: user.id,
                     guildId: guildId,
                     status: 'approved'
                 }
@@ -56,21 +56,69 @@ async function updateMember(req: NextRequest, user: any, params: { id: string; m
             return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
 
-        const updateData: any = {};
-        if (data.characterName !== undefined) updateData.characterName = data.characterName;
-        if (data.customValues !== undefined) updateData.customValues = data.customValues;
-        if (data.role !== undefined) updateData.role = data.role;
-
-        await prisma.guildMember.update({
-            where: { guildId_memberId: { guildId, memberId: targetMemberId } },
-            data: updateData
+        // Check if the target has a GuildMember record (regular member)
+        const existingMember = await prisma.guildMember.findUnique({
+            where: { guildId_memberId: { guildId, memberId: targetMemberId } }
         });
+
+        if (existingMember) {
+            // Regular member: update only the provided fields
+            const updateData: any = {};
+            if (data.characterName !== undefined) updateData.characterName = data.characterName;
+            if (data.customValues !== undefined) updateData.customValues = data.customValues;
+            if (data.role !== undefined) updateData.role = data.role;
+
+            await prisma.guildMember.update({
+                where: { guildId_memberId: { guildId, memberId: targetMemberId } },
+                data: updateData
+            });
+        } else if (data.role) {
+            // Pilot/external user: NO GuildMember record exists.
+            // Guild permissions belong to the account (Profile), not the character.
+            // Store the guild role inside GuildCharacterShare.permissions.guildRole
+            // so the pilot does NOT become a member (no duplicate character in the guild).
+            const pilotShares = await prisma.guildCharacterShare.findMany({
+                where: {
+                    sharedWithUserId: targetMemberId,
+                    guildId: guildId,
+                    status: 'approved'
+                }
+            });
+
+            if (pilotShares.length === 0) {
+                return NextResponse.json(
+                    { error: 'Usuário não possui acesso ativo a nenhum personagem desta guilda.' },
+                    { status: 404 }
+                );
+            }
+
+            // Update permissions.guildRole for all approved shares of this pilot in this guild
+            await prisma.guildCharacterShare.updateMany({
+                where: {
+                    sharedWithUserId: targetMemberId,
+                    guildId: guildId,
+                    status: 'approved'
+                },
+                data: {
+                    permissions: { guildRole: data.role }
+                }
+            });
+        } else {
+            // No GuildMember and no role change requested
+            return NextResponse.json(
+                { error: 'Este usuário não possui registro nesta guilda.' },
+                { status: 404 }
+            );
+        }
 
         return NextResponse.json({ success: true });
     } catch (error: any) {
         console.error('Error updating member:', error);
         if (error instanceof z.ZodError) {
             return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
+        }
+        if (error?.code === 'P2025') {
+            return NextResponse.json({ error: 'Membro não encontrado nesta guilda.' }, { status: 404 });
         }
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
