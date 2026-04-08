@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { z } from 'zod';
 import { deepSerialize } from '@/lib/serialize';
+import { calculateReputation } from '@/lib/reputation';
 
 // GET /api/ads - List ads with filters
 export async function GET(req: NextRequest) {
@@ -51,7 +52,12 @@ export async function GET(req: NextRequest) {
                         username: true,
                         avatarUrl: true,
                         reputationScore: true,
-                        discordCreatedAt: true
+                        discordCreatedAt: true,
+                        guildMembers: {
+                            select: {
+                                role: true
+                            }
+                        }
                     }
                 }
             },
@@ -61,8 +67,14 @@ export async function GET(req: NextRequest) {
 
         const serializedAds = ads.map(ad => {
             const base = deepSerialize(ad);
+            const userReputation = calculateReputation(ad.user);
+            
             return {
                 ...base,
+                user: {
+                    ...base.user,
+                    reputationScore: userReputation.score
+                },
                 // Ensure snake_case fields for frontend compatibility
                 expires_at: base.expiresAt,
                 created_at: base.createdAt,
