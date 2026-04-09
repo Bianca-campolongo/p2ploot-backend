@@ -70,7 +70,8 @@ async function createGiveaway(req: NextRequest, user: any, params: { id: string 
                 data: {
                     status: 'closed',
                     winnerId,
-                    endTime: new Date()
+                    endTime: new Date(),
+                    requirements: { is_giveaway: true }
                 }
             });
         }
