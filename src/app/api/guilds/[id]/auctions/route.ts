@@ -15,6 +15,9 @@ async function listAuctions(req: NextRequest, params: { id: string }) {
         const favoritesOnly = searchParams.get('favoritesOnly') === 'true';
         const search = searchParams.get('search');
         const delivered = searchParams.get('delivered');
+        const rarity = searchParams.get('rarity');
+        const itemType = searchParams.get('itemType');
+        const isNft = searchParams.get('isNft');
         const skip = (page - 1) * limit;
 
         const where: any = { guildId };
@@ -24,6 +27,22 @@ async function listAuctions(req: NextRequest, params: { id: string }) {
 
         if (delivered === 'true') where.delivered = true;
         if (delivered === 'false') where.delivered = false;
+
+        // Item-related filters
+        const itemFilters: any = {};
+        if (rarity && rarity !== 'all') {
+            itemFilters.rarity = rarity;
+        }
+        if (itemType && itemType !== 'all') {
+            itemFilters.itemType = itemType;
+        }
+        if (isNft && isNft !== 'all') {
+            itemFilters.isNft = isNft === 'true';
+        }
+
+        if (Object.keys(itemFilters).length > 0) {
+            where.item = itemFilters;
+        }
 
         if (search) {
             where.OR = [
