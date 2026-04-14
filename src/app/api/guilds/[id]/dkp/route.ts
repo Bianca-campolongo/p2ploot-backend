@@ -24,15 +24,28 @@ async function getHistory(req: NextRequest, user: any, params: { id: string }) {
         const limit = parseInt(searchParams.get('limit') || '50');
         const offset = parseInt(searchParams.get('offset') || '0');
 
-        // Verify caller is a member or owner of the guild
+        // Verify caller is a member, owner, or authorized pilot of the guild
         const guild = await prisma.guild.findUnique({ where: { id: guildId }, select: { ownerId: true, ownerAddress: true } });
         const callerIsOwner = guild && (guild.ownerId === user.id || guild.ownerAddress === user.id);
+        
         if (!callerIsOwner) {
             const callerMember = await prisma.guildMember.findUnique({
                 where: { guildId_memberId: { guildId, memberId: user.id } }
             });
+
             if (!callerMember) {
-                return NextResponse.json({ error: 'Forbidden: not a guild member' }, { status: 403 });
+                // Check if user is a pilot for any character in this guild
+                const pilotShare = await prisma.guildCharacterShare.findFirst({
+                    where: {
+                        sharedWithUserId: user.id,
+                        guildId: guildId,
+                        status: 'approved'
+                    }
+                });
+
+                if (!pilotShare) {
+                    return NextResponse.json({ error: 'Forbidden: not a guild member or authorized pilot' }, { status: 403 });
+                }
             }
         }
 
