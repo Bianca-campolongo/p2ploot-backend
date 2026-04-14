@@ -11,6 +11,7 @@ const distributeSchema = z.object({
         amount: z.number().refine(n => !isNaN(n), { message: "Amount must be a valid number" }),
         eventTypeId: z.string().uuid().optional().nullable().or(z.literal('')),
         description: z.string(),
+        createdAt: z.string().optional(), // Added carefully so frontend can backdate entries
     })),
 });
 
@@ -63,6 +64,7 @@ async function getHistory(req: NextRequest, user: any, params: { id: string }) {
         const serialized = history.map((entry: any) => ({
             ...entry,
             id: entry.id,
+            description: entry.description ? entry.description.replace(' [Ignorar Presença]', '') : entry.description,
             guildId: entry.guildId.toString(),
             eventType: entry.eventType ? {
                 ...entry.eventType,
@@ -111,7 +113,8 @@ async function distribute(req: NextRequest, user: any, params: { id: string }) {
                     eventTypeId: e.eventTypeId === '' ? null : e.eventTypeId,
                     amount: e.amount,
                     description: e.description,
-                    createdBy: user.id
+                    createdBy: user.id,
+                    ...(e.createdAt ? { createdAt: new Date(e.createdAt) } : {})
                 }))
             });
 
