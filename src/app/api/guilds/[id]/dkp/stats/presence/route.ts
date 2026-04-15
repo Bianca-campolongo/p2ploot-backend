@@ -36,10 +36,7 @@ async function getPresenceStats(req: NextRequest, user: any, params: { id: strin
         const whereClause: any = {
             guildId,
             amount: { gt: 0 },
-            NOT: [
-                { description: { contains: 'Decay' } },
-                { description: { contains: '[Ignorar Presença]' } }
-            ]
+            description: { contains: '[Presença]' }
         };
 
         if (createdAtFilter) {
