@@ -7,7 +7,8 @@ import { z } from 'zod';
 const giveawaySchema = z.object({
     prizeDescription: z.string().min(1),
     filterDescription: z.string().optional(),
-    eligibleMemberIds: z.array(z.string().uuid()),
+    eligibleMemberIds: z.array(z.string().uuid()).optional().default([]),
+    manualNames: z.array(z.string()).optional().default([]), // New: Manual names for list-mode
     warehouseItemId: z.string().uuid().optional().nullable(),
     winnerId: z.string().uuid().optional(),
 });
@@ -18,8 +19,8 @@ async function createGiveaway(req: NextRequest, user: any, params: { id: string 
         const body = await req.json();
         const data = giveawaySchema.parse(body);
 
-        if (data.eligibleMemberIds.length === 0) {
-            return NextResponse.json({ error: 'No eligible members' }, { status: 400 });
+        if (data.eligibleMemberIds.length === 0 && data.manualNames.length === 0) {
+            return NextResponse.json({ error: 'No eligible members or names' }, { status: 400 });
         }
 
         // Check permissions
@@ -38,18 +39,31 @@ async function createGiveaway(req: NextRequest, user: any, params: { id: string 
             return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
 
-        // Use provided winnerId or roll winner
-        let winnerId = data.winnerId;
-        if (!winnerId || !data.eligibleMemberIds.includes(winnerId)) {
-            const winnerIdx = Math.floor(Math.random() * data.eligibleMemberIds.length);
-            winnerId = data.eligibleMemberIds[winnerIdx];
-        }
+        let finalWinnerId: string | null = null;
+        let finalWinnerName = 'Desconhecido';
+        let metadata: any = {};
 
-        // Get winner details
-        const winnerMember = await prisma.guildMember.findUnique({
-            where: { guildId_memberId: { guildId, memberId: winnerId } },
-            include: { member: { select: { username: true } } }
-        });
+        // 1. Logic for Manual Names List
+        if (data.manualNames.length > 0 && data.eligibleMemberIds.length === 0) {
+            const winnerIdx = Math.floor(Math.random() * data.manualNames.length);
+            finalWinnerName = data.manualNames[winnerIdx];
+            metadata = { manualWinnerName: finalWinnerName, isManualList: true };
+        } 
+        // 2. Logic for Registered Members
+        else {
+            finalWinnerId = data.winnerId || null;
+            if (!finalWinnerId || !data.eligibleMemberIds.includes(finalWinnerId)) {
+                const winnerIdx = Math.floor(Math.random() * data.eligibleMemberIds.length);
+                finalWinnerId = data.eligibleMemberIds[winnerIdx];
+            }
+
+            // Get winner details
+            const winnerMember = await prisma.guildMember.findUnique({
+                where: { guildId_memberId: { guildId, memberId: finalWinnerId } },
+                include: { member: { select: { username: true } } }
+            });
+            finalWinnerName = winnerMember?.characterName || winnerMember?.member?.username || 'Unknown';
+        }
 
         // Create giveaway record
         const giveaway = await prisma.guildGiveaway.create({
@@ -57,19 +71,20 @@ async function createGiveaway(req: NextRequest, user: any, params: { id: string 
                 guildId,
                 title: data.prizeDescription,
                 description: data.filterDescription,
-                winnerId,
+                winnerId: finalWinnerId,
+                filters: metadata,
                 status: 'completed',
                 completedAt: new Date()
             }
         });
 
         // If from warehouse, mark item as used
-        if (data.warehouseItemId) {
+        if (data.warehouseItemId && finalWinnerId) {
             await prisma.guildAuction.update({
                 where: { id: data.warehouseItemId },
                 data: {
                     status: 'closed',
-                    winnerId,
+                    winnerId: finalWinnerId,
                     endTime: new Date(),
                     requirements: { is_giveaway: true }
                 }
@@ -80,8 +95,8 @@ async function createGiveaway(req: NextRequest, user: any, params: { id: string 
             success: true,
             giveaway: {
                 id: giveaway.id,
-                winnerId,
-                winnerName: winnerMember?.characterName || winnerMember?.member?.username || 'Unknown',
+                winnerId: finalWinnerId,
+                winnerName: finalWinnerName,
                 prize: data.prizeDescription
             }
         });
@@ -116,7 +131,15 @@ async function listGiveaways(req: NextRequest, params: { id: string }) {
 
         const serialized = giveaways.map((g: any) => {
             const member = g.winnerId ? memberMap.get(g.winnerId) : null;
-            const name = member?.characterName || member?.member?.username || 'Desconhecido';
+            let name = member?.characterName || member?.member?.username;
+            
+            // If no registered member, check the manual metadata
+            if (!name && g.filters && typeof g.filters === 'object') {
+                name = (g.filters as any).manualWinnerName;
+            }
+
+            if (!name) name = 'Desconhecido';
+
             return {
                 ...g,
                 guildId: g.guildId.toString(),

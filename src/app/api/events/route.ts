@@ -13,14 +13,22 @@ export async function GET(request: NextRequest) {
         const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : undefined;
 
         console.log('[API] Fetching events...');
+        const status = searchParams.get('status');
 
         const whereClause: any = {
-            status: { in: ['upcoming', 'ongoing'] },
             approvedAt: { not: null },
-            eventDate: {
-                gte: new Date(),
-            }
         };
+
+        // Se pedir status=all, não filtramos por status nem data
+        if (status === 'all') {
+            // No filter
+        } else if (status === 'completed') {
+            whereClause.status = 'completed';
+        } else if (!status) {
+            // Comportamento padrão: apenas por vir e ativos
+            whereClause.status = { in: ['upcoming', 'ongoing'] };
+            whereClause.eventDate = { gte: new Date() };
+        }
 
         if (game && game !== 'all') {
             whereClause.game = game;

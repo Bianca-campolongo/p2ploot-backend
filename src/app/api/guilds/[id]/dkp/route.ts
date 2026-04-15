@@ -11,6 +11,7 @@ const distributeSchema = z.object({
         amount: z.number().refine(n => !isNaN(n), { message: "Amount must be a valid number" }),
         eventTypeId: z.string().uuid().optional().nullable().or(z.literal('')),
         description: z.string(),
+        createdAt: z.string().optional(), // Added carefully so frontend can backdate entries
     })),
 });
 
@@ -23,15 +24,28 @@ async function getHistory(req: NextRequest, user: any, params: { id: string }) {
         const limit = parseInt(searchParams.get('limit') || '50');
         const offset = parseInt(searchParams.get('offset') || '0');
 
-        // Verify caller is a member or owner of the guild
+        // Verify caller is a member, owner, or authorized pilot of the guild
         const guild = await prisma.guild.findUnique({ where: { id: guildId }, select: { ownerId: true, ownerAddress: true } });
         const callerIsOwner = guild && (guild.ownerId === user.id || guild.ownerAddress === user.id);
+        
         if (!callerIsOwner) {
             const callerMember = await prisma.guildMember.findUnique({
                 where: { guildId_memberId: { guildId, memberId: user.id } }
             });
+
             if (!callerMember) {
-                return NextResponse.json({ error: 'Forbidden: not a guild member' }, { status: 403 });
+                // Check if user is a pilot for any character in this guild
+                const pilotShare = await prisma.guildCharacterShare.findFirst({
+                    where: {
+                        sharedWithUserId: user.id,
+                        guildId: guildId,
+                        status: 'approved'
+                    }
+                });
+
+                if (!pilotShare) {
+                    return NextResponse.json({ error: 'Forbidden: not a guild member or authorized pilot' }, { status: 403 });
+                }
             }
         }
 
@@ -63,6 +77,7 @@ async function getHistory(req: NextRequest, user: any, params: { id: string }) {
         const serialized = history.map((entry: any) => ({
             ...entry,
             id: entry.id,
+            description: entry.description ? entry.description.replace(' [Ignorar Presença]', '') : entry.description,
             guildId: entry.guildId.toString(),
             eventType: entry.eventType ? {
                 ...entry.eventType,
@@ -111,7 +126,8 @@ async function distribute(req: NextRequest, user: any, params: { id: string }) {
                     eventTypeId: e.eventTypeId === '' ? null : e.eventTypeId,
                     amount: e.amount,
                     description: e.description,
-                    createdBy: user.id
+                    createdBy: user.id,
+                    ...(e.createdAt ? { createdAt: new Date(e.createdAt) } : {})
                 }))
             });
 
