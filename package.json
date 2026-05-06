@@ -15,6 +15,7 @@
     "db:create-tables": "node scripts/criar-tabelas-interativo.js",
     "db:create-tables-auto": "node scripts/criar-tabelas-final.js",
     "db:test": "node scripts/testar-conexao.js",
+    "web3:status": "node scripts/check-web3-status.js",
     "smoke:web3": "node scripts/smoke-web3.js",
     "smoke:web3:devnet": "node scripts/smoke-web3-devnet.js"
   },
