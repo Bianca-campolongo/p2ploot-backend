@@ -78,6 +78,11 @@ model Profile {
   eventsOrganized       Event[]                @relation("EventOrganizer")
   eventsApproved        Event[]                @relation("EventApprover")
   adsApproved           MarketAd[]             @relation("AdApprover")
+  web3Wallets           Web3Wallet[]
+  escrowDealsAsBuyer    EscrowDeal[]           @relation("EscrowBuyer")
+  escrowDealsAsSeller   EscrowDeal[]           @relation("EscrowSeller")
+  escrowDealsCreated    EscrowDeal[]           @relation("EscrowCreator")
+  escrowEvents          EscrowEvent[]          @relation("EscrowEventActor")
   moderatorPermission   ModeratorPermission?
 
   @@map("profiles")
@@ -458,6 +463,7 @@ model MarketAd {
 
   user    Profile    @relation(fields: [userId], references: [id], onDelete: Cascade)
   reports AdReport[]
+  escrowDeals EscrowDeal[]
 
   @@index([userId])
   @@index([status])
@@ -515,10 +521,104 @@ model Conversation {
   buyer    Profile   @relation("ConversationBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
   seller   Profile   @relation("ConversationSeller", fields: [sellerId], references: [id], onDelete: Cascade)
   messages Message[]
+  escrowDeals EscrowDeal[]
 
   @@index([buyerId])
   @@index([sellerId])
   @@map("conversations")
+}
+
+// Web3 baseline: wallet linkage and Solana marketplace escrow audit trail
+model Web3Wallet {
+  id             String    @id @default(uuid()) @db.Char(36)
+  userId         String    @map("user_id") @db.Char(36)
+  chain          String    @default("solana") @db.VarChar(50)
+  network        String    @default("devnet") @db.VarChar(50)
+  address        String    @db.VarChar(128)
+  provider       String    @default("privy") @db.VarChar(50)
+  providerUserId String?   @map("provider_user_id") @db.VarChar(255)
+  walletType     String?   @map("wallet_type") @db.VarChar(50)
+  isPrimary      Boolean   @default(false) @map("is_primary")
+  lastSeenAt     DateTime? @map("last_seen_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([chain, network, address])
+  @@index([userId, chain, network, isPrimary])
+  @@index([address])
+  @@map("web3_wallets")
+}
+
+model EscrowDeal {
+  id                String    @id @default(uuid()) @db.Char(36)
+  conversationId    String?   @map("conversation_id") @db.Char(36)
+  adId              BigInt?   @map("ad_id")
+  buyerId           String    @map("buyer_id") @db.Char(36)
+  sellerId          String    @map("seller_id") @db.Char(36)
+  createdById       String    @map("created_by_id") @db.Char(36)
+  chain             String    @default("solana") @db.VarChar(50)
+  network           String    @default("devnet") @db.VarChar(50)
+  programId         String?   @map("program_id") @db.VarChar(128)
+  assetMint         String?   @map("asset_mint") @db.VarChar(128)
+  currencySymbol    String?   @map("currency_symbol") @db.VarChar(20)
+  amountRaw         String?   @map("amount_raw") @db.VarChar(80)
+  amountUi          Decimal?  @map("amount_ui") @db.Decimal(20, 9)
+  status            String    @default("draft") @db.VarChar(50)
+  escrowPda         String?   @map("escrow_pda") @db.VarChar(128)
+  vaultAddress      String?   @map("vault_address") @db.VarChar(128)
+  depositTx         String?   @map("deposit_tx") @db.VarChar(128)
+  releaseTx         String?   @map("release_tx") @db.VarChar(128)
+  refundTx          String?   @map("refund_tx") @db.VarChar(128)
+  cancelTx          String?   @map("cancel_tx") @db.VarChar(128)
+  sellerConfirmTx   String?   @map("seller_confirm_tx") @db.VarChar(128)
+  expiresAt         DateTime? @map("expires_at")
+  fundedAt          DateTime? @map("funded_at")
+  sellerConfirmedAt DateTime? @map("seller_confirmed_at")
+  releasedAt        DateTime? @map("released_at")
+  refundedAt        DateTime? @map("refunded_at")
+  cancelledAt       DateTime? @map("cancelled_at")
+  disputedAt        DateTime? @map("disputed_at")
+  metadata          Json?     @default("{}") @db.Json
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  ad           MarketAd?     @relation(fields: [adId], references: [id], onDelete: SetNull)
+  buyer        Profile       @relation("EscrowBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  seller       Profile       @relation("EscrowSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  createdBy    Profile       @relation("EscrowCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  events       EscrowEvent[]
+
+  @@index([conversationId, status])
+  @@index([buyerId, status])
+  @@index([sellerId, status])
+  @@index([createdById])
+  @@index([adId])
+  @@index([depositTx])
+  @@index([status])
+  @@map("escrow_deals")
+}
+
+model EscrowEvent {
+  id             String   @id @default(uuid()) @db.Char(36)
+  dealId         String   @map("deal_id") @db.Char(36)
+  actorId        String?  @map("actor_id") @db.Char(36)
+  type           String   @db.VarChar(50)
+  statusSnapshot String?  @map("status_snapshot") @db.VarChar(50)
+  txSignature    String?  @map("tx_signature") @db.VarChar(128)
+  message        String?  @db.Text
+  payload        Json?    @default("{}") @db.Json
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  deal  EscrowDeal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  actor Profile?   @relation("EscrowEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([dealId, createdAt])
+  @@index([actorId])
+  @@index([txSignature])
+  @@map("escrow_events")
 }
 
 model GameVote {

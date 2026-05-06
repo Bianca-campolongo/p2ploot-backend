@@ -14,11 +14,14 @@
     "db:seed:prisma": "tsx prisma/seed.ts",
     "db:create-tables": "node scripts/criar-tabelas-interativo.js",
     "db:create-tables-auto": "node scripts/criar-tabelas-final.js",
-    "db:test": "node scripts/testar-conexao.js"
+    "db:test": "node scripts/testar-conexao.js",
+    "smoke:web3": "node scripts/smoke-web3.js",
+    "smoke:web3:devnet": "node scripts/smoke-web3-devnet.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1015.0",
     "@prisma/client": "^5.7.1",
+    "@solana/web3.js": "^1.98.4",
     "bcryptjs": "^2.4.3",
     "buffer": "^6.0.3",
     "jsonwebtoken": "^9.0.2",
