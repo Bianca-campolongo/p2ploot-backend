@@ -67,6 +67,10 @@ function latestDemoMode(deal) {
   return deal.events?.[0]?.payload?.devnetDemoTx?.mode || null;
 }
 
+function latestDevnetDemoTx(deal) {
+  return deal.events?.[0]?.payload?.devnetDemoTx || null;
+}
+
 async function main() {
   const health = await request('GET', '/api/health');
   assert(health.status === 'ok', 'Health check is not ok');
@@ -93,6 +97,11 @@ async function main() {
   current = await patchEscrow(buyer.token, deal.id, 'release');
   assert(current.status === 'released', 'Release did not finalize escrow');
   assert(current.releaseTx, 'Missing real release tx');
+  const releaseDemoTx = latestDevnetDemoTx(current);
+  assert(releaseDemoTx?.platformFeeAddress, 'Missing platform fee wallet address');
+  assert(releaseDemoTx.platformFeeBps === 250, 'Unexpected platform fee bps');
+  assert(releaseDemoTx.platformFeeLamports === 25000, 'Unexpected platform fee lamports');
+  assert(releaseDemoTx.sellerLamports === 975000, 'Unexpected seller net lamports');
   const releaseExplorer = latestExplorerUrl(current);
   const releaseMode = latestDemoMode(current);
 
@@ -103,6 +112,10 @@ async function main() {
     buyerWallet: buyerWallet.wallet.address,
     sellerWallet: sellerWallet.wallet.address,
     vaultAddress: current.vaultAddress,
+    platformFeeAddress: releaseDemoTx.platformFeeAddress,
+    platformFeeBps: releaseDemoTx.platformFeeBps,
+    platformFeeLamports: releaseDemoTx.platformFeeLamports,
+    sellerLamports: releaseDemoTx.sellerLamports,
     depositTx: current.depositTx,
     releaseTx: current.releaseTx,
     depositMode,

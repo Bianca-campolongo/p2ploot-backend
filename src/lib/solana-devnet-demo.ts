@@ -43,8 +43,12 @@ export type DevnetDemoTxResult = {
   toAddress: string;
   buyerAddress: string;
   sellerAddress: string;
+  platformFeeAddress: string;
   vaultAddress: string;
   lamports: number;
+  sellerLamports: number;
+  platformFeeLamports: number;
+  platformFeeBps: number;
   feeReserveLamports: number;
   explorerUrl: string | null;
   fallbackReason?: string;
@@ -54,6 +58,7 @@ const DEMO_ACTIONS = new Set<string>(['record_deposit', 'release', 'record_refun
 const DEFAULT_STORE_PATH = path.resolve(process.cwd(), '..', '.local-infra', 'solana-devnet-wallets.json');
 const DEFAULT_TRANSFER_LAMPORTS = 1_000_000;
 const DEFAULT_FEE_RESERVE_LAMPORTS = 20_000;
+const DEFAULT_PLATFORM_FEE_BPS = 250;
 const DEFAULT_AIRDROP_LAMPORTS = Math.round(0.05 * LAMPORTS_PER_SOL);
 const DEFAULT_RPC_TIMEOUT_MS = 20_000;
 
@@ -133,6 +138,20 @@ function getFeeReserveLamports(): number {
   return Number.isFinite(configured) && configured >= 0 ? Math.floor(configured) : DEFAULT_FEE_RESERVE_LAMPORTS;
 }
 
+function getPlatformFeeBps(): number {
+  const configured = Number(process.env.PLATFORM_FEE_BPS || DEFAULT_PLATFORM_FEE_BPS);
+  if (!Number.isFinite(configured)) return DEFAULT_PLATFORM_FEE_BPS;
+  return Math.min(10_000, Math.max(0, Math.floor(configured)));
+}
+
+function getPlatformFeeLamports(grossLamports: number): number {
+  return Math.floor((grossLamports * getPlatformFeeBps()) / 10_000);
+}
+
+function getPlatformFeeKeypair(): Keypair {
+  return getOrCreateKeypair('platform:owner-fee-wallet');
+}
+
 export function isDevnetDemoEnabled(network?: string | null): boolean {
   const configured = process.env.SOLANA_DEVNET_DEMO_ENABLED;
   const enabled = configured === 'true' || (configured !== 'false' && process.env.NODE_ENV !== 'production');
@@ -147,6 +166,10 @@ export function getOrCreateUserDevnetDemoKeypair(userId: string): Keypair {
   return getOrCreateKeypair(`user:${userId}`);
 }
 
+export function getPlatformDevnetDemoAddress(): string {
+  return getPlatformFeeKeypair().publicKey.toBase58();
+}
+
 function localFallbackSignature(action: DevnetDemoAction, dealId: string): string {
   return `${action}${Date.now()}${dealId.replace(/[^1-9A-HJ-NP-Za-km-z]/g, '')}111111111111111111111111111111111111111111111111`.slice(0, 88);
 }
@@ -154,8 +177,12 @@ function localFallbackSignature(action: DevnetDemoAction, dealId: string): strin
 export function buildLocalDevnetDemoFallback(deal: DemoDeal, action: DevnetDemoAction, error: unknown): DevnetDemoTxResult {
   const buyer = getOrCreateKeypair(`user:${deal.buyerId}`);
   const seller = getOrCreateKeypair(`user:${deal.sellerId}`);
+  const platformFeeWallet = getPlatformFeeKeypair();
   const vault = getOrCreateKeypair(`escrow-vault:${deal.id}`);
   const from = action === 'record_deposit' ? buyer.publicKey : vault.publicKey;
+  const grossLamports = getTransferLamports();
+  const platformFeeLamports = action === 'release' ? getPlatformFeeLamports(grossLamports) : 0;
+  const sellerLamports = action === 'release' ? Math.max(0, grossLamports - platformFeeLamports) : 0;
   const to = action === 'release'
     ? seller.publicKey
     : action === 'record_refund'
@@ -170,8 +197,12 @@ export function buildLocalDevnetDemoFallback(deal: DemoDeal, action: DevnetDemoA
     toAddress: to.toBase58(),
     buyerAddress: buyer.publicKey.toBase58(),
     sellerAddress: seller.publicKey.toBase58(),
+    platformFeeAddress: platformFeeWallet.publicKey.toBase58(),
     vaultAddress: vault.publicKey.toBase58(),
-    lamports: getTransferLamports(),
+    lamports: grossLamports,
+    sellerLamports,
+    platformFeeLamports,
+    platformFeeBps: getPlatformFeeBps(),
     feeReserveLamports: getFeeReserveLamports(),
     explorerUrl: null,
     fallbackReason: error instanceof Error ? error.message : 'Solana devnet unavailable',
@@ -203,8 +234,11 @@ export async function executeDevnetDemoEscrowTransfer(deal: DemoDeal, action: De
   const connection = getConnection();
   const buyer = getOrCreateKeypair(`user:${deal.buyerId}`);
   const seller = getOrCreateKeypair(`user:${deal.sellerId}`);
+  const platformFeeWallet = getPlatformFeeKeypair();
   const vault = getOrCreateKeypair(`escrow-vault:${deal.id}`);
   const transferLamports = getTransferLamports();
+  const platformFeeLamports = getPlatformFeeLamports(transferLamports);
+  const sellerLamports = Math.max(0, transferLamports - platformFeeLamports);
   const feeReserveLamports = getFeeReserveLamports();
 
   let from: Keypair;
@@ -227,13 +261,34 @@ export async function executeDevnetDemoEscrowTransfer(deal: DemoDeal, action: De
     lamports = Math.min(transferLamports, vaultBalance - 5_000);
   }
 
-  const transaction = new Transaction().add(
-    SystemProgram.transfer({
-      fromPubkey: from.publicKey,
-      toPubkey: to,
-      lamports,
-    })
-  );
+  const transaction = new Transaction();
+  if (action === 'release') {
+    transaction.add(
+      SystemProgram.transfer({
+        fromPubkey: from.publicKey,
+        toPubkey: seller.publicKey,
+        lamports: sellerLamports,
+      })
+    );
+
+    if (platformFeeLamports > 0) {
+      transaction.add(
+        SystemProgram.transfer({
+          fromPubkey: from.publicKey,
+          toPubkey: platformFeeWallet.publicKey,
+          lamports: platformFeeLamports,
+        })
+      );
+    }
+  } else {
+    transaction.add(
+      SystemProgram.transfer({
+        fromPubkey: from.publicKey,
+        toPubkey: to,
+        lamports,
+      })
+    );
+  }
 
   const signature = await withTimeout(
     sendAndConfirmTransaction(connection, transaction, [from], {
@@ -251,8 +306,12 @@ export async function executeDevnetDemoEscrowTransfer(deal: DemoDeal, action: De
     toAddress: to.toBase58(),
     buyerAddress: buyer.publicKey.toBase58(),
     sellerAddress: seller.publicKey.toBase58(),
+    platformFeeAddress: platformFeeWallet.publicKey.toBase58(),
     vaultAddress: vault.publicKey.toBase58(),
     lamports,
+    sellerLamports: action === 'release' ? sellerLamports : 0,
+    platformFeeLamports: action === 'release' ? platformFeeLamports : 0,
+    platformFeeBps: getPlatformFeeBps(),
     feeReserveLamports,
     explorerUrl: `https://explorer.solana.com/tx/${signature}?cluster=devnet`,
   };

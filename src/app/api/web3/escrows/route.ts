@@ -130,6 +130,7 @@ async function createEscrow(req: NextRequest, user: AuthUser) {
     const currencySymbol = body.currencySymbol || ad?.currency || 'USDC';
     const network = normalizeSolanaNetwork(body.network);
     const expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
+    const platformFeeBps = Number(process.env.PLATFORM_FEE_BPS || 250);
 
     const deal = await prisma.escrowDeal.create({
       data: {
@@ -151,6 +152,7 @@ async function createEscrow(req: NextRequest, user: AuthUser) {
         metadata: {
           ...(body.metadata || {}),
           source: 'marketplace_conversation',
+          platformFeeBps,
           adSnapshot: ad
             ? {
                 id: ad.id.toString(),
@@ -175,6 +177,7 @@ async function createEscrow(req: NextRequest, user: AuthUser) {
               currencySymbol,
               amountUi,
               amountRaw: body.amountRaw,
+              platformFeeBps,
             },
           },
         },

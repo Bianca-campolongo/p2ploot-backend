@@ -4,6 +4,7 @@ import { requireAuth, type AuthUser } from '@/lib/auth';
 import { deepSerialize } from '@/lib/serialize';
 import {
   ensureDevnetDemoFunds,
+  getPlatformDevnetDemoAddress,
   getOrCreateUserDevnetDemoKeypair,
   isDevnetDemoEnabled,
 } from '@/lib/solana-devnet-demo';
@@ -92,6 +93,8 @@ async function createDevnetDemoWallet(_req: NextRequest, user: AuthUser) {
 
     return NextResponse.json({
       wallet: deepSerialize(wallet),
+      platformFeeAddress: getPlatformDevnetDemoAddress(),
+      platformFeeBps: Number(process.env.PLATFORM_FEE_BPS || 250),
       funding,
       fundingError,
       mode: 'solana_devnet_system_transfer_demo',
