@@ -20,6 +20,8 @@ model Profile {
   walletAddress     String?   @unique @map("wallet_address") @db.VarChar(255)
   primaryAuthMethod String    @default("discord") @map("primary_auth_method") @db.VarChar(50)
   walletLinkedAt    DateTime? @map("wallet_linked_at")
+  privyId           String?   @unique @map("privy_id") @db.VarChar(255)
+  privyLinkedAt     DateTime? @map("privy_linked_at")
 
   // Discord
   discordId         String? @map("discord_id") @db.VarChar(255)
