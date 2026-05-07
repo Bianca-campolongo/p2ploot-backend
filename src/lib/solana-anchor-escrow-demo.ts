@@ -233,7 +233,7 @@ export async function executeAnchorEscrowDemoAction(
       platformFeeWallet.publicKey
     );
 
-    await mintTo(connection, buyer, mint, buyerToken.address, buyer, amount);
+    await mintTo(connection, platformFeeWallet, mint, buyerToken.address, buyer, amount);
 
     const initializeSignature = await methods
       .initializeDeal(Array.from(dealIdBytes), new BN(amount.toString()), platformFeeBps, getExpiresAtSeconds(deal.expiresAt))

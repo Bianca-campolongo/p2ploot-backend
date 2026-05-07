@@ -86,6 +86,17 @@ function keypairFromStoredWallet(wallet: StoredWallet): Keypair {
   return Keypair.fromSecretKey(Uint8Array.from(Buffer.from(wallet.secretKey, 'base64')));
 }
 
+function keypairFromConfiguredSecret(secretKey: string): Keypair {
+  const trimmed = secretKey.trim();
+  const raw = trimmed.startsWith('base64:') ? trimmed.slice('base64:'.length) : trimmed;
+
+  if (raw.startsWith('[')) {
+    return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(raw)));
+  }
+
+  return Keypair.fromSecretKey(Uint8Array.from(Buffer.from(raw, 'base64')));
+}
+
 function getOrCreateKeypair(label: string): Keypair {
   const store = readStore();
   const existing = store.wallets[label];
@@ -153,6 +164,10 @@ export function getPlatformFeeLamports(grossLamports: number): number {
 }
 
 export function getPlatformFeeKeypair(): Keypair {
+  if (process.env.SOLANA_DEVNET_DEMO_PLATFORM_FEE_SECRET_KEY) {
+    return keypairFromConfiguredSecret(process.env.SOLANA_DEVNET_DEMO_PLATFORM_FEE_SECRET_KEY);
+  }
+
   return getOrCreateKeypair('platform:owner-fee-wallet');
 }
 
