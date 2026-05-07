@@ -27,6 +27,10 @@ import {
   getPlatformFeeKeypair,
   isDevnetDemoEnabled,
 } from '@/lib/solana-devnet-demo';
+import {
+  getKoraFeePayerPublicKey,
+  koraSignAndSendTransaction,
+} from '@/lib/kora-rpc';
 
 export type AnchorEscrowDemoAction = 'record_deposit' | 'seller_confirm' | 'release' | 'record_refund';
 
@@ -49,13 +53,19 @@ export type AnchorEscrowDemoTxResult = {
   signature: string;
   initializeSignature?: string;
   depositSignature?: string;
+  initializePayerMode?: 'platform_devnet_payer' | 'kora';
+  depositPayerMode?: 'platform_devnet_payer' | 'kora';
   programId: string;
   fromAddress: string;
   toAddress: string;
   buyerAddress: string;
   sellerAddress: string;
   payerAddress: string;
-  payerMode: 'platform_devnet_payer';
+  payerMode: 'platform_devnet_payer' | 'kora';
+  koraSignerPubkey?: string;
+  koraSignedTransaction?: string;
+  koraAttempted?: boolean;
+  koraError?: string;
   platformFeeAddress: string;
   vaultAddress: string;
   escrowPda: string;
@@ -174,6 +184,87 @@ function explorerUrl(signature: string, network: string): string {
   return `https://explorer.solana.com/tx/${signature}${cluster}`;
 }
 
+type AnchorSendResult = {
+  signature: string;
+  payerAddress: string;
+  payerMode: 'platform_devnet_payer' | 'kora';
+  koraSignerPubkey?: string;
+  koraSignedTransaction?: string;
+  koraAttempted?: boolean;
+  koraError?: string;
+};
+
+function shouldFallbackToPlatformPayer(): boolean {
+  return process.env.KORA_FALLBACK_TO_PLATFORM_PAYER !== 'false';
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function sendAnchorTransaction(
+  network: string,
+  connection: ReturnType<typeof getDevnetDemoConnection>,
+  platformPayer: PublicKey,
+  userSigners: Keypair[],
+  buildKoraTransaction: (payer: PublicKey) => Promise<Transaction>,
+  sendWithPlatformPayer: () => Promise<string>
+): Promise<AnchorSendResult> {
+  const koraPayer = getKoraFeePayerPublicKey(network);
+
+  if (koraPayer) {
+    try {
+      const latestBlockhash = await connection.getLatestBlockhash('confirmed');
+      const transaction = await buildKoraTransaction(koraPayer);
+      transaction.feePayer = koraPayer;
+      transaction.recentBlockhash = latestBlockhash.blockhash;
+      if (userSigners.length > 0) {
+        transaction.partialSign(...userSigners);
+      }
+
+      const result = await koraSignAndSendTransaction(transaction);
+      await connection.confirmTransaction(
+        {
+          signature: result.signature,
+          blockhash: latestBlockhash.blockhash,
+          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+        },
+        'confirmed'
+      );
+
+      return {
+        signature: result.signature,
+        payerAddress: koraPayer.toBase58(),
+        payerMode: 'kora',
+        koraSignerPubkey: result.signer_pubkey,
+        koraSignedTransaction: result.signed_transaction,
+        koraAttempted: true,
+      };
+    } catch (error) {
+      if (!shouldFallbackToPlatformPayer()) {
+        throw error;
+      }
+
+      console.warn('[kora] falling back to platform devnet payer', error);
+      const signature = await sendWithPlatformPayer();
+      return {
+        signature,
+        payerAddress: platformPayer.toBase58(),
+        payerMode: 'platform_devnet_payer',
+        koraAttempted: true,
+        koraError: errorMessage(error),
+      };
+    }
+  }
+
+  const signature = await sendWithPlatformPayer();
+  return {
+    signature,
+    payerAddress: platformPayer.toBase58(),
+    payerMode: 'platform_devnet_payer',
+  };
+}
+
 async function getOrCreateTokenAccounts(
   payer: Keypair,
   mint: PublicKey,
@@ -235,51 +326,99 @@ export async function executeAnchorEscrowDemoAction(
 
     await mintTo(connection, platformFeeWallet, mint, buyerToken.address, buyer, amount);
 
-    const initializeSignature = await methods
-      .initializeDeal(Array.from(dealIdBytes), new BN(amount.toString()), platformFeeBps, getExpiresAtSeconds(deal.expiresAt))
-      .accounts({
-        payer: platformFeeWallet.publicKey,
-        buyer: buyer.publicKey,
-        seller: seller.publicKey,
-        platformFeeRecipient: platformFeeWallet.publicKey,
-        mint,
-        deal: dealPda,
-        vault,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-        rent: SYSVAR_RENT_PUBKEY,
-      })
-      .signers([buyer])
-      .rpc();
+    const initializeTx = await sendAnchorTransaction(
+      deal.network,
+      connection,
+      platformFeeWallet.publicKey,
+      [buyer],
+      (payer) =>
+        methods
+          .initializeDeal(Array.from(dealIdBytes), new BN(amount.toString()), platformFeeBps, getExpiresAtSeconds(deal.expiresAt))
+          .accounts({
+            payer,
+            buyer: buyer.publicKey,
+            seller: seller.publicKey,
+            platformFeeRecipient: platformFeeWallet.publicKey,
+            mint,
+            deal: dealPda,
+            vault,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+            rent: SYSVAR_RENT_PUBKEY,
+          })
+          .transaction(),
+      () =>
+        methods
+          .initializeDeal(Array.from(dealIdBytes), new BN(amount.toString()), platformFeeBps, getExpiresAtSeconds(deal.expiresAt))
+          .accounts({
+            payer: platformFeeWallet.publicKey,
+            buyer: buyer.publicKey,
+            seller: seller.publicKey,
+            platformFeeRecipient: platformFeeWallet.publicKey,
+            mint,
+            deal: dealPda,
+            vault,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+            rent: SYSVAR_RENT_PUBKEY,
+          })
+          .signers([buyer])
+          .rpc()
+    );
 
-    const depositSignature = await methods
-      .deposit()
-      .accounts({
-        buyer: buyer.publicKey,
-        deal: dealPda,
-        mint,
-        buyerToken: buyerToken.address,
-        vault,
-        tokenProgram: TOKEN_PROGRAM_ID,
-      })
-      .signers([buyer])
-      .rpc();
+    const depositTx = await sendAnchorTransaction(
+      deal.network,
+      connection,
+      platformFeeWallet.publicKey,
+      [buyer],
+      () =>
+        methods
+          .deposit()
+          .accounts({
+            buyer: buyer.publicKey,
+            deal: dealPda,
+            mint,
+            buyerToken: buyerToken.address,
+            vault,
+            tokenProgram: TOKEN_PROGRAM_ID,
+          })
+          .transaction(),
+      () =>
+        methods
+          .deposit()
+          .accounts({
+            buyer: buyer.publicKey,
+            deal: dealPda,
+            mint,
+            buyerToken: buyerToken.address,
+            vault,
+            tokenProgram: TOKEN_PROGRAM_ID,
+          })
+          .signers([buyer])
+          .rpc()
+    );
 
     const vaultAccount = await getAccount(connection, vault);
 
     return {
       mode: 'solana_devnet_anchor_escrow',
       action,
-      signature: depositSignature,
-      initializeSignature,
-      depositSignature,
+      signature: depositTx.signature,
+      initializeSignature: initializeTx.signature,
+      depositSignature: depositTx.signature,
+      initializePayerMode: initializeTx.payerMode,
+      depositPayerMode: depositTx.payerMode,
       programId: programId.toBase58(),
       fromAddress: buyer.publicKey.toBase58(),
       toAddress: vault.toBase58(),
       buyerAddress: buyer.publicKey.toBase58(),
       sellerAddress: seller.publicKey.toBase58(),
-      payerAddress: platformFeeWallet.publicKey.toBase58(),
-      payerMode: 'platform_devnet_payer',
+      payerAddress: depositTx.payerAddress,
+      payerMode: depositTx.payerMode,
+      koraSignerPubkey: depositTx.koraSignerPubkey || initializeTx.koraSignerPubkey,
+      koraSignedTransaction: depositTx.koraSignedTransaction,
+      koraAttempted: depositTx.koraAttempted || initializeTx.koraAttempted,
+      koraError: depositTx.koraError || initializeTx.koraError,
       platformFeeAddress: platformFeeWallet.publicKey.toBase58(),
       vaultAddress: vault.toBase58(),
       escrowPda: dealPda.toBase58(),
@@ -293,7 +432,7 @@ export async function executeAnchorEscrowDemoAction(
       platformFeeLamports: 0,
       platformFeeBps,
       feeReserveLamports: getFeeReserveLamports(),
-      explorerUrl: explorerUrl(depositSignature, deal.network),
+      explorerUrl: explorerUrl(depositTx.signature, deal.network),
       vaultTokenBalance: vaultAccount.amount.toString(),
     };
   }
@@ -312,26 +451,45 @@ export async function executeAnchorEscrowDemoAction(
   );
 
   if (action === 'seller_confirm') {
-    const signature = await methods
-      .sellerConfirm()
-      .accounts({
-        seller: seller.publicKey,
-        deal: dealPda,
-      })
-      .signers([seller])
-      .rpc();
+    const sent = await sendAnchorTransaction(
+      deal.network,
+      connection,
+      platformFeeWallet.publicKey,
+      [seller],
+      () =>
+        methods
+          .sellerConfirm()
+          .accounts({
+            seller: seller.publicKey,
+            deal: dealPda,
+          })
+          .transaction(),
+      () =>
+        methods
+          .sellerConfirm()
+          .accounts({
+            seller: seller.publicKey,
+            deal: dealPda,
+          })
+          .signers([seller])
+          .rpc()
+    );
 
     return {
       mode: 'solana_devnet_anchor_escrow',
       action,
-      signature,
+      signature: sent.signature,
       programId: programId.toBase58(),
       fromAddress: seller.publicKey.toBase58(),
       toAddress: dealPda.toBase58(),
       buyerAddress: buyer.publicKey.toBase58(),
       sellerAddress: seller.publicKey.toBase58(),
-      payerAddress: platformFeeWallet.publicKey.toBase58(),
-      payerMode: 'platform_devnet_payer',
+      payerAddress: sent.payerAddress,
+      payerMode: sent.payerMode,
+      koraSignerPubkey: sent.koraSignerPubkey,
+      koraSignedTransaction: sent.koraSignedTransaction,
+      koraAttempted: sent.koraAttempted,
+      koraError: sent.koraError,
       platformFeeAddress: platformFeeWallet.publicKey.toBase58(),
       vaultAddress: vault.toBase58(),
       escrowPda: dealPda.toBase58(),
@@ -345,51 +503,86 @@ export async function executeAnchorEscrowDemoAction(
       platformFeeLamports: 0,
       platformFeeBps,
       feeReserveLamports: getFeeReserveLamports(),
-      explorerUrl: explorerUrl(signature, deal.network),
+      explorerUrl: explorerUrl(sent.signature, deal.network),
     };
   }
 
-  const signature =
-    action === 'release'
-      ? await methods
-          .release()
-          .accounts({
-            buyer: buyer.publicKey,
-            deal: dealPda,
-            mint,
-            vault,
-            sellerToken: sellerToken.address,
-            platformFeeToken: platformFeeToken.address,
-            tokenProgram: TOKEN_PROGRAM_ID,
-          })
-          .signers([buyer])
-          .rpc()
-      : await methods
-          .refund()
-          .accounts({
-            buyer: buyer.publicKey,
-            deal: dealPda,
-            mint,
-            vault,
-            buyerToken: buyerToken.address,
-            tokenProgram: TOKEN_PROGRAM_ID,
-          })
-          .signers([buyer])
-          .rpc();
+  const sent = await sendAnchorTransaction(
+    deal.network,
+    connection,
+    platformFeeWallet.publicKey,
+    [buyer],
+    () =>
+      action === 'release'
+        ? methods
+            .release()
+            .accounts({
+              buyer: buyer.publicKey,
+              deal: dealPda,
+              mint,
+              vault,
+              sellerToken: sellerToken.address,
+              platformFeeToken: platformFeeToken.address,
+              tokenProgram: TOKEN_PROGRAM_ID,
+            })
+            .transaction()
+        : methods
+            .refund()
+            .accounts({
+              buyer: buyer.publicKey,
+              deal: dealPda,
+              mint,
+              vault,
+              buyerToken: buyerToken.address,
+              tokenProgram: TOKEN_PROGRAM_ID,
+            })
+            .transaction(),
+    () =>
+      action === 'release'
+        ? methods
+            .release()
+            .accounts({
+              buyer: buyer.publicKey,
+              deal: dealPda,
+              mint,
+              vault,
+              sellerToken: sellerToken.address,
+              platformFeeToken: platformFeeToken.address,
+              tokenProgram: TOKEN_PROGRAM_ID,
+            })
+            .signers([buyer])
+            .rpc()
+        : methods
+            .refund()
+            .accounts({
+              buyer: buyer.publicKey,
+              deal: dealPda,
+              mint,
+              vault,
+              buyerToken: buyerToken.address,
+              tokenProgram: TOKEN_PROGRAM_ID,
+            })
+            .signers([buyer])
+            .rpc()
+  );
 
   const vaultAccount = await getAccount(connection, vault);
 
   return {
     mode: 'solana_devnet_anchor_escrow',
     action,
-    signature,
+    signature: sent.signature,
     programId: programId.toBase58(),
     fromAddress: vault.toBase58(),
     toAddress: action === 'release' ? seller.publicKey.toBase58() : buyer.publicKey.toBase58(),
     buyerAddress: buyer.publicKey.toBase58(),
     sellerAddress: seller.publicKey.toBase58(),
-    payerAddress: platformFeeWallet.publicKey.toBase58(),
-    payerMode: 'platform_devnet_payer',
+    payerAddress: sent.payerAddress,
+    payerMode: sent.payerMode,
+    koraSignerPubkey: sent.koraSignerPubkey,
+    koraSignedTransaction: sent.koraSignedTransaction,
+    koraAttempted: sent.koraAttempted,
+    koraError: sent.koraError,
     platformFeeAddress: platformFeeWallet.publicKey.toBase58(),
     vaultAddress: vault.toBase58(),
     escrowPda: dealPda.toBase58(),
@@ -403,7 +596,7 @@ export async function executeAnchorEscrowDemoAction(
     platformFeeLamports: toSafeNumber(platformFeeAmount),
     platformFeeBps,
     feeReserveLamports: getFeeReserveLamports(),
-    explorerUrl: explorerUrl(signature, deal.network),
+    explorerUrl: explorerUrl(sent.signature, deal.network),
     vaultTokenBalance: vaultAccount.amount.toString(),
   };
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { Connection, PublicKey } from '@solana/web3.js';
+import { getKoraFeePayerAddress, isKoraSignAndSendEnabled } from '@/lib/kora-rpc';
 import { isAnchorEscrowDemoEnabled } from '@/lib/solana-anchor-escrow-demo';
 import { getPlatformDevnetDemoAddress, isDevnetDemoEnabled } from '@/lib/solana-devnet-demo';
 import { normalizeSolanaNetwork } from '@/lib/web3';
@@ -96,6 +97,7 @@ export async function GET() {
   const contractReady = programIdConfigured && (!programDeployment.checked || programDeployment.deployed);
   const koraNetwork = normalizeSolanaNetwork(process.env.KORA_NETWORK || network);
   const koraRpcConfigured = configured(process.env.KORA_RPC_URL);
+  const koraSignAndSendEnabled = isKoraSignAndSendEnabled(network);
 
   const blockers: string[] = [];
   if (!privyConfigured) {
@@ -159,9 +161,12 @@ export async function GET() {
       network: koraNetwork,
       rpcHost: rpcHost(process.env.KORA_RPC_URL),
       feePayerAddressConfigured: configured(process.env.KORA_FEE_PAYER_ADDRESS),
+      feePayerAddress: getKoraFeePayerAddress(),
+      signAndSendEnabled: koraSignAndSendEnabled,
+      fallbackToPlatformPayer: process.env.KORA_FALLBACK_TO_PLATFORM_PAYER !== 'false',
       localDevnetPayerAddress: getPlatformDevnetDemoAddress(),
       escrowSupportsExternalPayer: anchorDemoEnabled,
-      devnetCompatible: network === 'devnet' && koraNetwork === 'devnet' && contractReady && anchorDemoEnabled,
+      devnetCompatible: network === 'devnet' && koraNetwork === 'devnet' && contractReady && anchorDemoEnabled && koraSignAndSendEnabled,
     },
   });
 }

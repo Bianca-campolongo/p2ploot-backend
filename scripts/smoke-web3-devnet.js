@@ -126,6 +126,9 @@ async function main() {
   assert(current.releaseTx, 'Missing real release tx');
   const releaseDemoTx = latestDevnetDemoTx(current);
   assert(releaseDemoTx?.mode === 'solana_devnet_anchor_escrow', `Release did not use Anchor escrow program: ${releaseDemoTx?.mode}`);
+  if (process.env.SMOKE_EXPECT_KORA_PAYER === 'true') {
+    assert(releaseDemoTx?.payerMode === 'kora', `Release did not use Kora payer: ${releaseDemoTx?.payerMode || 'missing'}`);
+  }
   assert(releaseDemoTx?.platformFeeAddress, 'Missing platform fee wallet address');
   assert(releaseDemoTx.platformFeeBps === 250, 'Unexpected platform fee bps');
   assert(releaseDemoTx.platformFeeLamports === 25000, 'Unexpected platform fee lamports');
@@ -143,6 +146,11 @@ async function main() {
     sellerWallet: sellerWallet.wallet.address,
     vaultAddress: current.vaultAddress,
     platformFeeAddress: releaseDemoTx.platformFeeAddress,
+    payerMode: releaseDemoTx.payerMode,
+    payerAddress: releaseDemoTx.payerAddress,
+    koraSignerPubkey: releaseDemoTx.koraSignerPubkey,
+    koraAttempted: releaseDemoTx.koraAttempted,
+    koraError: releaseDemoTx.koraError,
     platformFeeBps: releaseDemoTx.platformFeeBps,
     platformFeeLamports: releaseDemoTx.platformFeeLamports,
     sellerLamports: releaseDemoTx.sellerLamports,
