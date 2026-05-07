@@ -118,7 +118,7 @@ async function main() {
 
   const releaseAdId = process.env.SMOKE_AD_ID || await findSmokeAdId(
     seller.user.id,
-    process.env.SMOKE_AD_TITLE || 'Smoke Web3 Devnet QA',
+    process.env.SMOKE_RELEASE_AD_TITLE || 'Smoke Web3 Release QA',
     '1'
   );
   const refundAdId = process.env.SMOKE_REFUND_AD_ID || await findSmokeAdId(

@@ -4,6 +4,8 @@ const ENABLED = process.env.DOKPLOY_WEB3_SMOKE_SEED === "true";
 const BUYER_EMAIL = process.env.SMOKE_BUYER_EMAIL || "player2@talon.com";
 const SELLER_EMAIL = process.env.SMOKE_SELLER_EMAIL || "player1@talon.com";
 const SMOKE_AD_TITLE = process.env.SMOKE_AD_TITLE || "Smoke Web3 Devnet QA";
+const SMOKE_RELEASE_AD_TITLE =
+  process.env.SMOKE_RELEASE_AD_TITLE || "Smoke Web3 Release QA";
 const SMOKE_REFUND_AD_TITLE =
   process.env.SMOKE_REFUND_AD_TITLE || "Smoke Web3 Refund QA";
 
@@ -99,7 +101,12 @@ async function main() {
   try {
     const seller = await upsertProfile(prisma, SELLER_EMAIL, "QA Seller");
     const buyer = await upsertProfile(prisma, BUYER_EMAIL, "QA Buyer");
-    const ad = await ensureSmokeAd(prisma, seller.id, SMOKE_AD_TITLE);
+    const devnetAd = await ensureSmokeAd(prisma, seller.id, SMOKE_AD_TITLE);
+    const releaseAd = await ensureSmokeAd(
+      prisma,
+      seller.id,
+      SMOKE_RELEASE_AD_TITLE
+    );
     const refundAd = await ensureSmokeAd(
       prisma,
       buyer.id,
@@ -111,7 +118,8 @@ async function main() {
         message: "[web3-smoke-seed] ready",
         buyerEmail: buyer.email,
         sellerEmail: seller.email,
-        adId: ad.id.toString(),
+        devnetAdId: devnetAd.id.toString(),
+        releaseAdId: releaseAd.id.toString(),
         refundAdId: refundAd.id.toString(),
       })
     );
