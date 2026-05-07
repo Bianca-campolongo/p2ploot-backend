@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { Connection, PublicKey } from '@solana/web3.js';
+import { isAnchorEscrowDemoEnabled } from '@/lib/solana-anchor-escrow-demo';
 import { isDevnetDemoEnabled } from '@/lib/solana-devnet-demo';
 import { normalizeSolanaNetwork } from '@/lib/web3';
 
@@ -88,6 +89,7 @@ export async function GET() {
     programIdConfigured && shouldCheckProgramDeployment
   );
   const devnetDemoEnabled = isDevnetDemoEnabled(network);
+  const anchorDemoEnabled = isAnchorEscrowDemoEnabled(network);
   const validateSignatures = isEnabled(process.env.SOLANA_VALIDATE_TX_SIGNATURES);
   const fallbackToLocal = process.env.SOLANA_DEVNET_DEMO_FALLBACK_TO_LOCAL !== 'false';
 
@@ -138,8 +140,10 @@ export async function GET() {
     },
     devnetDemo: {
       enabled: devnetDemoEnabled,
+      anchorEscrowEnabled: anchorDemoEnabled,
       fallbackToLocal,
       autoAirdrop: isEnabled(process.env.SOLANA_DEVNET_DEMO_AUTO_AIRDROP),
+      platformFunderEnabled: process.env.SOLANA_DEVNET_DEMO_FUNDER_ENABLED !== 'false',
     },
     platformFee: {
       bps: getPlatformFeeBps(),

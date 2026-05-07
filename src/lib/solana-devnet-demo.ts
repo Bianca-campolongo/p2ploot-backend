@@ -106,11 +106,11 @@ function getOrCreateKeypair(label: string): Keypair {
   return keypair;
 }
 
-function getConnection(): Connection {
+export function getDevnetDemoConnection(): Connection {
   return new Connection(process.env.SOLANA_RPC_URL || clusterApiUrl('devnet'), 'confirmed');
 }
 
-function getTransferLamports(): number {
+export function getDevnetDemoTransferLamports(): number {
   const configured = Number(process.env.SOLANA_DEVNET_DEMO_LAMPORTS || DEFAULT_TRANSFER_LAMPORTS);
   return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : DEFAULT_TRANSFER_LAMPORTS;
 }
@@ -124,6 +124,10 @@ function shouldAutoAirdrop(): boolean {
   return process.env.SOLANA_DEVNET_DEMO_AUTO_AIRDROP === 'true';
 }
 
+function shouldUsePlatformFunder(): boolean {
+  return process.env.SOLANA_DEVNET_DEMO_FUNDER_ENABLED !== 'false';
+}
+
 function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs = getRpcTimeoutMs()): Promise<T> {
   return Promise.race([
     promise,
@@ -133,22 +137,22 @@ function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs = getRpcTi
   ]);
 }
 
-function getFeeReserveLamports(): number {
+export function getFeeReserveLamports(): number {
   const configured = Number(process.env.SOLANA_DEVNET_DEMO_FEE_RESERVE_LAMPORTS || DEFAULT_FEE_RESERVE_LAMPORTS);
   return Number.isFinite(configured) && configured >= 0 ? Math.floor(configured) : DEFAULT_FEE_RESERVE_LAMPORTS;
 }
 
-function getPlatformFeeBps(): number {
+export function getPlatformFeeBps(): number {
   const configured = Number(process.env.PLATFORM_FEE_BPS || DEFAULT_PLATFORM_FEE_BPS);
   if (!Number.isFinite(configured)) return DEFAULT_PLATFORM_FEE_BPS;
   return Math.min(10_000, Math.max(0, Math.floor(configured)));
 }
 
-function getPlatformFeeLamports(grossLamports: number): number {
+export function getPlatformFeeLamports(grossLamports: number): number {
   return Math.floor((grossLamports * getPlatformFeeBps()) / 10_000);
 }
 
-function getPlatformFeeKeypair(): Keypair {
+export function getPlatformFeeKeypair(): Keypair {
   return getOrCreateKeypair('platform:owner-fee-wallet');
 }
 
@@ -170,6 +174,47 @@ export function getPlatformDevnetDemoAddress(): string {
   return getPlatformFeeKeypair().publicKey.toBase58();
 }
 
+async function fundFromPlatformWallet(
+  connection: Connection,
+  publicKey: PublicKey,
+  minLamports: number,
+  currentBalance: number
+): Promise<string | null> {
+  if (!shouldUsePlatformFunder()) {
+    return null;
+  }
+
+  const funder = getPlatformFeeKeypair();
+  if (funder.publicKey.equals(publicKey)) {
+    return null;
+  }
+
+  const topUpLamports = Math.max(0, minLamports - currentBalance + getFeeReserveLamports());
+  if (topUpLamports <= 0) {
+    return null;
+  }
+
+  const reserveLamports = Number(process.env.SOLANA_DEVNET_DEMO_FUNDER_RESERVE_LAMPORTS || 50_000_000);
+  const funderBalance = await withTimeout(connection.getBalance(funder.publicKey, 'confirmed'), 'Solana get funder balance');
+  if (funderBalance < topUpLamports + Math.max(0, reserveLamports)) {
+    return null;
+  }
+
+  const transaction = new Transaction().add(
+    SystemProgram.transfer({
+      fromPubkey: funder.publicKey,
+      toPubkey: publicKey,
+      lamports: topUpLamports,
+    })
+  );
+
+  return withTimeout(
+    sendAndConfirmTransaction(connection, transaction, [funder], { commitment: 'confirmed' }),
+    'Solana platform funding transfer',
+    Math.max(getRpcTimeoutMs(), 30_000)
+  );
+}
+
 function localFallbackSignature(action: DevnetDemoAction, dealId: string): string {
   return `${action}${Date.now()}${dealId.replace(/[^1-9A-HJ-NP-Za-km-z]/g, '')}111111111111111111111111111111111111111111111111`.slice(0, 88);
 }
@@ -180,7 +225,7 @@ export function buildLocalDevnetDemoFallback(deal: DemoDeal, action: DevnetDemoA
   const platformFeeWallet = getPlatformFeeKeypair();
   const vault = getOrCreateKeypair(`escrow-vault:${deal.id}`);
   const from = action === 'record_deposit' ? buyer.publicKey : vault.publicKey;
-  const grossLamports = getTransferLamports();
+  const grossLamports = getDevnetDemoTransferLamports();
   const platformFeeLamports = action === 'release' ? getPlatformFeeLamports(grossLamports) : 0;
   const sellerLamports = action === 'release' ? Math.max(0, grossLamports - platformFeeLamports) : 0;
   const to = action === 'release'
@@ -209,11 +254,19 @@ export function buildLocalDevnetDemoFallback(deal: DemoDeal, action: DevnetDemoA
   };
 }
 
-export async function ensureDevnetDemoFunds(publicKey: PublicKey, minLamports = getTransferLamports() + getFeeReserveLamports() + 10_000) {
-  const connection = getConnection();
+export async function ensureDevnetDemoFunds(publicKey: PublicKey, minLamports = getDevnetDemoTransferLamports() + getFeeReserveLamports() + 10_000) {
+  const connection = getDevnetDemoConnection();
   const balance = await withTimeout(connection.getBalance(publicKey, 'confirmed'), 'Solana getBalance');
   if (balance >= minLamports) {
     return { balance, airdropSignature: null as string | null };
+  }
+
+  const funderSignature = await fundFromPlatformWallet(connection, publicKey, minLamports, balance);
+  if (funderSignature) {
+    const fundedBalance = await withTimeout(connection.getBalance(publicKey, 'confirmed'), 'Solana getBalance after platform funding');
+    if (fundedBalance >= minLamports) {
+      return { balance: fundedBalance, airdropSignature: funderSignature };
+    }
   }
 
   if (!shouldAutoAirdrop()) {
@@ -231,12 +284,12 @@ export async function executeDevnetDemoEscrowTransfer(deal: DemoDeal, action: De
     throw new Error('Solana devnet demo is disabled for this escrow');
   }
 
-  const connection = getConnection();
+  const connection = getDevnetDemoConnection();
   const buyer = getOrCreateKeypair(`user:${deal.buyerId}`);
   const seller = getOrCreateKeypair(`user:${deal.sellerId}`);
   const platformFeeWallet = getPlatformFeeKeypair();
   const vault = getOrCreateKeypair(`escrow-vault:${deal.id}`);
-  const transferLamports = getTransferLamports();
+  const transferLamports = getDevnetDemoTransferLamports();
   const platformFeeLamports = getPlatformFeeLamports(transferLamports);
   const sellerLamports = Math.max(0, transferLamports - platformFeeLamports);
   const feeReserveLamports = getFeeReserveLamports();

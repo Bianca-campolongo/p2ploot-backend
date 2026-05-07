@@ -88,22 +88,31 @@ async function main() {
   assert(current.status === 'funded', 'Deposit did not fund escrow');
   assert(current.depositTx, 'Missing real deposit tx');
   assert(current.vaultAddress, 'Missing devnet vault address');
+  assert(current.escrowPda, 'Missing Anchor escrow PDA');
+  assert(current.assetMint, 'Missing Anchor asset mint');
   const depositExplorer = latestExplorerUrl(current);
   const depositMode = latestDemoMode(current);
+  assert(depositMode === 'solana_devnet_anchor_escrow', `Deposit did not use Anchor escrow program: ${depositMode}`);
+  assert(depositExplorer, 'Missing deposit explorer URL');
 
   current = await patchEscrow(seller.token, deal.id, 'seller_confirm');
   assert(current.status === 'seller_confirmed', 'Seller confirm did not update status');
+  assert(current.sellerConfirmTx, 'Missing seller confirm tx');
+  const sellerConfirmMode = latestDemoMode(current);
+  assert(sellerConfirmMode === 'solana_devnet_anchor_escrow', `Seller confirm did not use Anchor escrow program: ${sellerConfirmMode}`);
 
   current = await patchEscrow(buyer.token, deal.id, 'release');
   assert(current.status === 'released', 'Release did not finalize escrow');
   assert(current.releaseTx, 'Missing real release tx');
   const releaseDemoTx = latestDevnetDemoTx(current);
+  assert(releaseDemoTx?.mode === 'solana_devnet_anchor_escrow', `Release did not use Anchor escrow program: ${releaseDemoTx?.mode}`);
   assert(releaseDemoTx?.platformFeeAddress, 'Missing platform fee wallet address');
   assert(releaseDemoTx.platformFeeBps === 250, 'Unexpected platform fee bps');
   assert(releaseDemoTx.platformFeeLamports === 25000, 'Unexpected platform fee lamports');
   assert(releaseDemoTx.sellerLamports === 975000, 'Unexpected seller net lamports');
   const releaseExplorer = latestExplorerUrl(current);
   const releaseMode = latestDemoMode(current);
+  assert(releaseExplorer, 'Missing release explorer URL');
 
   console.log(JSON.stringify({
     ok: true,
@@ -119,6 +128,7 @@ async function main() {
     depositTx: current.depositTx,
     releaseTx: current.releaseTx,
     depositMode,
+    sellerConfirmMode,
     releaseMode,
     depositExplorer,
     releaseExplorer,

@@ -4,6 +4,12 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth, type AuthUser } from '@/lib/auth';
 import { deepSerialize } from '@/lib/serialize';
 import {
+  executeAnchorEscrowDemoAction,
+  isAnchorEscrowDemoAction,
+  isAnchorEscrowDemoEnabled,
+  type AnchorEscrowDemoTxResult,
+} from '@/lib/solana-anchor-escrow-demo';
+import {
   buildLocalDevnetDemoFallback,
   executeDevnetDemoEscrowTransfer,
   isDevnetDemoAction,
@@ -14,6 +20,8 @@ import { shouldValidateSolanaTxSignatures, validateSolanaSignature, type SolanaS
 import { canReadEscrow, hasTerminalEscrowStatus, isAdminUser } from '@/lib/web3';
 
 export const dynamic = 'force-dynamic';
+
+type EscrowChainTxResult = DevnetDemoTxResult | AnchorEscrowDemoTxResult;
 
 const updateEscrowSchema = z.object({
   action: z.enum([
@@ -65,6 +73,13 @@ function requireTxSignature(action: string, txSignature?: string): string {
   return txSignature;
 }
 
+function anchorTxField<K extends keyof AnchorEscrowDemoTxResult>(
+  tx: EscrowChainTxResult | null,
+  key: K
+): AnchorEscrowDemoTxResult[K] | undefined {
+  return tx && key in tx ? (tx as AnchorEscrowDemoTxResult)[key] : undefined;
+}
+
 async function getEscrow(_req: NextRequest, user: AuthUser, context?: { params: { id: string } }) {
   const id = context?.params?.id;
   if (!id) {
@@ -99,9 +114,9 @@ async function updateEscrow(req: NextRequest, user: AuthUser, context?: { params
     const now = new Date();
     let effectiveTxSignature = body.txSignature;
     let solanaValidation: SolanaSignatureValidation | null = null;
-    let devnetDemoTx: DevnetDemoTxResult | null = null;
+    let devnetDemoTx: EscrowChainTxResult | null = null;
 
-    if (!effectiveTxSignature && isDevnetDemoAction(body.action)) {
+    if (!effectiveTxSignature && (isDevnetDemoAction(body.action) || isAnchorEscrowDemoAction(body.action))) {
       const preflightDeal = await prisma.escrowDeal.findUnique({
         where: { id },
         select: {
@@ -111,7 +126,12 @@ async function updateEscrow(req: NextRequest, user: AuthUser, context?: { params
           createdById: true,
           status: true,
           network: true,
+          assetMint: true,
+          amountRaw: true,
+          amountUi: true,
+          escrowPda: true,
           vaultAddress: true,
+          expiresAt: true,
         },
       });
 
@@ -128,9 +148,14 @@ async function updateEscrow(req: NextRequest, user: AuthUser, context?: { params
       }
 
       const isBuyer = preflightDeal.buyerId === user.id;
+      const isSeller = preflightDeal.sellerId === user.id;
 
       if (body.action === 'record_deposit' && !admin && !isBuyer) {
         return NextResponse.json({ error: 'Only buyer can record deposit' }, { status: 403 });
+      }
+
+      if (body.action === 'seller_confirm' && !admin && !isSeller) {
+        return NextResponse.json({ error: 'Only seller can confirm delivery' }, { status: 403 });
       }
 
       if (body.action === 'release' && !admin && !isBuyer) {
@@ -143,6 +168,7 @@ async function updateEscrow(req: NextRequest, user: AuthUser, context?: { params
 
       const statusAllowed =
         (body.action === 'record_deposit' && ['draft', 'initialized'].includes(preflightDeal.status)) ||
+        (body.action === 'seller_confirm' && preflightDeal.status === 'funded') ||
         (body.action === 'release' && ['funded', 'seller_confirmed'].includes(preflightDeal.status)) ||
         (body.action === 'record_refund' && ['funded', 'seller_confirmed', 'refund_requested', 'disputed'].includes(preflightDeal.status));
 
@@ -155,14 +181,21 @@ async function updateEscrow(req: NextRequest, user: AuthUser, context?: { params
 
       if (isDevnetDemoEnabled(preflightDeal.network)) {
         try {
-          devnetDemoTx = await executeDevnetDemoEscrowTransfer(preflightDeal, body.action);
+          if (isAnchorEscrowDemoEnabled(preflightDeal.network) && isAnchorEscrowDemoAction(body.action)) {
+            devnetDemoTx = await executeAnchorEscrowDemoAction(preflightDeal, body.action);
+          } else if (isDevnetDemoAction(body.action)) {
+            devnetDemoTx = await executeDevnetDemoEscrowTransfer(preflightDeal, body.action);
+          }
         } catch (error) {
-          if (process.env.SOLANA_DEVNET_DEMO_FALLBACK_TO_LOCAL === 'false') {
+          if (process.env.SOLANA_DEVNET_DEMO_FALLBACK_TO_LOCAL === 'false' || !isDevnetDemoAction(body.action)) {
             throw error;
           }
           devnetDemoTx = buildLocalDevnetDemoFallback(preflightDeal, body.action, error);
         }
-        if (!devnetDemoTx.signature) {
+        if (!devnetDemoTx?.signature) {
+          if (!isDevnetDemoAction(body.action)) {
+            throw new Error('Devnet transaction did not return a signature');
+          }
           devnetDemoTx = buildLocalDevnetDemoFallback(preflightDeal, body.action, new Error('Devnet transaction did not return a signature'));
         }
         effectiveTxSignature = devnetDemoTx.signature;
@@ -219,8 +252,10 @@ async function updateEscrow(req: NextRequest, user: AuthUser, context?: { params
           Object.assign(data, {
             status: nextStatus,
             depositTx: txSignature,
-            programId: body.programId || deal.programId,
-            escrowPda: body.escrowPda || deal.escrowPda,
+            programId: body.programId || anchorTxField(devnetDemoTx, 'programId') || deal.programId,
+            assetMint: anchorTxField(devnetDemoTx, 'assetMint') || deal.assetMint,
+            amountRaw: anchorTxField(devnetDemoTx, 'amountRaw') || deal.amountRaw,
+            escrowPda: body.escrowPda || anchorTxField(devnetDemoTx, 'escrowPda') || deal.escrowPda,
             vaultAddress: body.vaultAddress || devnetDemoTx?.vaultAddress || deal.vaultAddress,
             fundedAt: now,
           });
