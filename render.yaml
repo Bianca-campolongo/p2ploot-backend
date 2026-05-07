@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: p2ploot-kora-devnet
+    runtime: docker
+    plan: starter
+    region: oregon
+    branch: teste
+    autoDeployTrigger: commit
+    dockerfilePath: ./services/kora/Dockerfile
+    dockerContext: ./services/kora
+    envVars:
+      - key: RPC_URL
+        value: https://api.devnet.solana.com
+      - key: RUST_LOG
+        value: info
+      - key: KORA_PRIVATE_KEY
+        sync: false
