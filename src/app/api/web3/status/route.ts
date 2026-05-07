@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { isAnchorEscrowDemoEnabled } from '@/lib/solana-anchor-escrow-demo';
-import { isDevnetDemoEnabled } from '@/lib/solana-devnet-demo';
+import { getPlatformDevnetDemoAddress, isDevnetDemoEnabled } from '@/lib/solana-devnet-demo';
 import { normalizeSolanaNetwork } from '@/lib/web3';
 
 export const dynamic = 'force-dynamic';
@@ -92,9 +92,13 @@ export async function GET() {
   const anchorDemoEnabled = isAnchorEscrowDemoEnabled(network);
   const validateSignatures = isEnabled(process.env.SOLANA_VALIDATE_TX_SIGNATURES);
   const fallbackToLocal = process.env.SOLANA_DEVNET_DEMO_FALLBACK_TO_LOCAL !== 'false';
+  const privyConfigured = configured(process.env.PRIVY_APP_ID) && configured(process.env.PRIVY_APP_SECRET);
+  const contractReady = programIdConfigured && (!programDeployment.checked || programDeployment.deployed);
+  const koraNetwork = normalizeSolanaNetwork(process.env.KORA_NETWORK || network);
+  const koraRpcConfigured = configured(process.env.KORA_RPC_URL);
 
   const blockers: string[] = [];
-  if (!configured(process.env.PRIVY_APP_ID) || !configured(process.env.PRIVY_APP_SECRET)) {
+  if (!privyConfigured) {
     blockers.push('privy_env_missing');
   }
   if (!configured(process.env.SOLANA_RPC_URL)) {
@@ -121,12 +125,13 @@ export async function GET() {
     checkedAt: new Date().toISOString(),
     readiness: {
       testDeployUsable: blockers.every((blocker) => blocker !== 'privy_env_missing' && blocker !== 'solana_rpc_missing'),
-      contractReady: programIdConfigured && (!programDeployment.checked || programDeployment.deployed),
-      mainnetReady: network === 'mainnet-beta' && programIdConfigured && (!programDeployment.checked || programDeployment.deployed) && validateSignatures && !devnetDemoEnabled && !fallbackToLocal,
+      devnetReady: network === 'devnet' && contractReady && privyConfigured && anchorDemoEnabled,
+      contractReady,
+      mainnetReady: network === 'mainnet-beta' && contractReady && validateSignatures && !devnetDemoEnabled && !fallbackToLocal,
       blockers,
     },
     privy: {
-      configured: configured(process.env.PRIVY_APP_ID) && configured(process.env.PRIVY_APP_SECRET),
+      configured: privyConfigured,
       appIdConfigured: configured(process.env.PRIVY_APP_ID),
       appSecretConfigured: configured(process.env.PRIVY_APP_SECRET),
     },
@@ -150,7 +155,13 @@ export async function GET() {
       pct: getPlatformFeeBps() / 100,
     },
     kora: {
-      configured: configured(process.env.KORA_RPC_URL),
+      configured: koraRpcConfigured,
+      network: koraNetwork,
+      rpcHost: rpcHost(process.env.KORA_RPC_URL),
+      feePayerAddressConfigured: configured(process.env.KORA_FEE_PAYER_ADDRESS),
+      localDevnetPayerAddress: getPlatformDevnetDemoAddress(),
+      escrowSupportsExternalPayer: anchorDemoEnabled,
+      devnetCompatible: network === 'devnet' && koraNetwork === 'devnet' && contractReady && anchorDemoEnabled,
     },
   });
 }

@@ -54,6 +54,8 @@ export type AnchorEscrowDemoTxResult = {
   toAddress: string;
   buyerAddress: string;
   sellerAddress: string;
+  payerAddress: string;
+  payerMode: 'platform_devnet_payer';
   platformFeeAddress: string;
   vaultAddress: string;
   escrowPda: string;
@@ -210,9 +212,9 @@ export async function executeAnchorEscrowDemoAction(
   const buyer = getOrCreateUserDevnetDemoKeypair(deal.buyerId);
   const seller = getOrCreateUserDevnetDemoKeypair(deal.sellerId);
   const platformFeeWallet = getPlatformFeeKeypair();
-  await ensureDevnetDemoFunds(buyer.publicKey, getBuyerMinLamports());
+  await ensureDevnetDemoFunds(platformFeeWallet.publicKey, getBuyerMinLamports());
 
-  const { connection, program, programId } = getProviderAndProgram(buyer);
+  const { connection, program, programId } = getProviderAndProgram(platformFeeWallet);
   const methods = program.methods as any;
   const dealIdBytes = getDealIdBytes(deal.id);
   const { dealPda, vault } = getEscrowPdas(programId, buyer.publicKey, seller.publicKey, dealIdBytes);
@@ -222,9 +224,9 @@ export async function executeAnchorEscrowDemoAction(
   const sellerAmount = action === 'release' ? amount - platformFeeAmount : 0n;
 
   if (action === 'record_deposit') {
-    const mint = await createMint(connection, buyer, buyer.publicKey, null, getTokenDecimals());
+    const mint = await createMint(connection, platformFeeWallet, buyer.publicKey, null, getTokenDecimals());
     const { buyerToken, sellerToken, platformFeeToken } = await getOrCreateTokenAccounts(
-      buyer,
+      platformFeeWallet,
       mint,
       buyer.publicKey,
       seller.publicKey,
@@ -236,6 +238,7 @@ export async function executeAnchorEscrowDemoAction(
     const initializeSignature = await methods
       .initializeDeal(Array.from(dealIdBytes), new BN(amount.toString()), platformFeeBps, getExpiresAtSeconds(deal.expiresAt))
       .accounts({
+        payer: platformFeeWallet.publicKey,
         buyer: buyer.publicKey,
         seller: seller.publicKey,
         platformFeeRecipient: platformFeeWallet.publicKey,
@@ -246,6 +249,7 @@ export async function executeAnchorEscrowDemoAction(
         systemProgram: SystemProgram.programId,
         rent: SYSVAR_RENT_PUBKEY,
       })
+      .signers([buyer])
       .rpc();
 
     const depositSignature = await methods
@@ -258,6 +262,7 @@ export async function executeAnchorEscrowDemoAction(
         vault,
         tokenProgram: TOKEN_PROGRAM_ID,
       })
+      .signers([buyer])
       .rpc();
 
     const vaultAccount = await getAccount(connection, vault);
@@ -273,6 +278,8 @@ export async function executeAnchorEscrowDemoAction(
       toAddress: vault.toBase58(),
       buyerAddress: buyer.publicKey.toBase58(),
       sellerAddress: seller.publicKey.toBase58(),
+      payerAddress: platformFeeWallet.publicKey.toBase58(),
+      payerMode: 'platform_devnet_payer',
       platformFeeAddress: platformFeeWallet.publicKey.toBase58(),
       vaultAddress: vault.toBase58(),
       escrowPda: dealPda.toBase58(),
@@ -297,7 +304,7 @@ export async function executeAnchorEscrowDemoAction(
 
   const mint = new PublicKey(deal.assetMint);
   const { buyerToken, sellerToken, platformFeeToken } = await getOrCreateTokenAccounts(
-    buyer,
+    platformFeeWallet,
     mint,
     buyer.publicKey,
     seller.publicKey,
@@ -323,6 +330,8 @@ export async function executeAnchorEscrowDemoAction(
       toAddress: dealPda.toBase58(),
       buyerAddress: buyer.publicKey.toBase58(),
       sellerAddress: seller.publicKey.toBase58(),
+      payerAddress: platformFeeWallet.publicKey.toBase58(),
+      payerMode: 'platform_devnet_payer',
       platformFeeAddress: platformFeeWallet.publicKey.toBase58(),
       vaultAddress: vault.toBase58(),
       escrowPda: dealPda.toBase58(),
@@ -353,6 +362,7 @@ export async function executeAnchorEscrowDemoAction(
             platformFeeToken: platformFeeToken.address,
             tokenProgram: TOKEN_PROGRAM_ID,
           })
+          .signers([buyer])
           .rpc()
       : await methods
           .refund()
@@ -364,6 +374,7 @@ export async function executeAnchorEscrowDemoAction(
             buyerToken: buyerToken.address,
             tokenProgram: TOKEN_PROGRAM_ID,
           })
+          .signers([buyer])
           .rpc();
 
   const vaultAccount = await getAccount(connection, vault);
@@ -377,6 +388,8 @@ export async function executeAnchorEscrowDemoAction(
     toAddress: action === 'release' ? seller.publicKey.toBase58() : buyer.publicKey.toBase58(),
     buyerAddress: buyer.publicKey.toBase58(),
     sellerAddress: seller.publicKey.toBase58(),
+    payerAddress: platformFeeWallet.publicKey.toBase58(),
+    payerMode: 'platform_devnet_payer',
     platformFeeAddress: platformFeeWallet.publicKey.toBase58(),
     vaultAddress: vault.toBase58(),
     escrowPda: dealPda.toBase58(),

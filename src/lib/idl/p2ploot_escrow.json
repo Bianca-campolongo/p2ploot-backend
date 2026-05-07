@@ -169,6 +169,11 @@
       ],
       "accounts": [
         {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
           "name": "buyer",
           "writable": true,
           "signer": true
