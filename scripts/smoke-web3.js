@@ -29,6 +29,20 @@ async function login(email) {
   return data;
 }
 
+async function findSmokeAdId(ownerId, title, fallbackId) {
+  const query = new URLSearchParams({
+    sellerId: ownerId,
+    search: title,
+  });
+  const ads = await request('GET', `/api/ads?${query.toString()}`);
+
+  if (Array.isArray(ads) && ads[0]?.id) {
+    return ads[0].id;
+  }
+
+  return fallbackId;
+}
+
 function wallet(seed) {
   return (`P2P${seed}${Date.now()}1111111111111111111111111111111111111111`)
     .replace(/[^1-9A-HJ-NP-Za-km-z]/g, '')
@@ -96,13 +110,24 @@ async function main() {
   const health = await request('GET', '/api/health');
   assert(health.status === 'ok', 'Health check is not ok');
 
-  const buyer = await login('player2@talon.com');
-  const seller = await login('player1@talon.com');
+  const buyer = await login(process.env.SMOKE_BUYER_EMAIL || 'player2@talon.com');
+  const seller = await login(process.env.SMOKE_SELLER_EMAIL || 'player1@talon.com');
 
   await linkWallet(buyer.token, wallet('Buyer'));
   await linkWallet(seller.token, wallet('Seller'));
 
-  const releaseConversationId = await createConversation(1, buyer.token, 'Smoke Web3 release');
+  const releaseAdId = process.env.SMOKE_AD_ID || await findSmokeAdId(
+    seller.user.id,
+    process.env.SMOKE_AD_TITLE || 'Smoke Web3 Devnet QA',
+    '1'
+  );
+  const refundAdId = process.env.SMOKE_REFUND_AD_ID || await findSmokeAdId(
+    buyer.user.id,
+    process.env.SMOKE_REFUND_AD_TITLE || 'Smoke Web3 Refund QA',
+    '2'
+  );
+
+  const releaseConversationId = await createConversation(releaseAdId, buyer.token, 'Smoke Web3 release');
   const releaseDeal = await createEscrow(buyer.token, releaseConversationId, '500.00');
 
   let current = await patchEscrow(buyer.token, releaseDeal.id, 'record_deposit', {
@@ -123,7 +148,7 @@ async function main() {
   });
   assert(current.status === 'released', 'Release did not finalize escrow');
 
-  const refundConversationId = await createConversation(2, seller.token, 'Smoke Web3 refund');
+  const refundConversationId = await createConversation(refundAdId, seller.token, 'Smoke Web3 refund');
   const refundDeal = await createEscrow(seller.token, refundConversationId, '1000.00');
 
   current = await patchEscrow(seller.token, refundDeal.id, 'record_deposit', {
@@ -162,6 +187,8 @@ async function main() {
     releaseDeal: releaseDeal.id,
     refundDeal: refundDeal.id,
     cancelledDeal: draftDeal.id,
+    releaseAdId,
+    refundAdId,
     apiBase: API_BASE,
   }, null, 2));
 }

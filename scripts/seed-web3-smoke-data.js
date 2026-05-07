@@ -4,6 +4,8 @@ const ENABLED = process.env.DOKPLOY_WEB3_SMOKE_SEED === "true";
 const BUYER_EMAIL = process.env.SMOKE_BUYER_EMAIL || "player2@talon.com";
 const SELLER_EMAIL = process.env.SMOKE_SELLER_EMAIL || "player1@talon.com";
 const SMOKE_AD_TITLE = process.env.SMOKE_AD_TITLE || "Smoke Web3 Devnet QA";
+const SMOKE_REFUND_AD_TITLE =
+  process.env.SMOKE_REFUND_AD_TITLE || "Smoke Web3 Refund QA";
 
 function assertAllowedDatabase() {
   const rawUrl = process.env.DATABASE_URL;
@@ -41,12 +43,12 @@ async function upsertProfile(prisma, email, username) {
   });
 }
 
-async function ensureSmokeAd(prisma, sellerId) {
+async function ensureSmokeAd(prisma, ownerId, title) {
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   const existing = await prisma.marketAd.findFirst({
     where: {
-      userId: sellerId,
-      title: SMOKE_AD_TITLE,
+      userId: ownerId,
+      title,
     },
     orderBy: { createdAt: "desc" },
   });
@@ -59,15 +61,15 @@ async function ensureSmokeAd(prisma, sellerId) {
         expiresAt,
         lastRenewedAt: new Date(),
         approvedAt: new Date(),
-        approvedById: sellerId,
+        approvedById: ownerId,
       },
     });
   }
 
   return prisma.marketAd.create({
     data: {
-      userId: sellerId,
-      title: SMOKE_AD_TITLE,
+      userId: ownerId,
+      title,
       description: "QA seed for remote Web3 devnet smoke.",
       price: 10,
       currency: "SOL",
@@ -79,7 +81,7 @@ async function ensureSmokeAd(prisma, sellerId) {
       expiresAt,
       lastRenewedAt: new Date(),
       approvedAt: new Date(),
-      approvedById: sellerId,
+      approvedById: ownerId,
     },
   });
 }
@@ -97,7 +99,12 @@ async function main() {
   try {
     const seller = await upsertProfile(prisma, SELLER_EMAIL, "QA Seller");
     const buyer = await upsertProfile(prisma, BUYER_EMAIL, "QA Buyer");
-    const ad = await ensureSmokeAd(prisma, seller.id);
+    const ad = await ensureSmokeAd(prisma, seller.id, SMOKE_AD_TITLE);
+    const refundAd = await ensureSmokeAd(
+      prisma,
+      buyer.id,
+      SMOKE_REFUND_AD_TITLE
+    );
 
     console.log(
       JSON.stringify({
@@ -105,6 +112,7 @@ async function main() {
         buyerEmail: buyer.email,
         sellerEmail: seller.email,
         adId: ad.id.toString(),
+        refundAdId: refundAd.id.toString(),
       })
     );
   } finally {
