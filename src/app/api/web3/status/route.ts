@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { Connection, PublicKey } from '@solana/web3.js';
 import { isDevnetDemoEnabled } from '@/lib/solana-devnet-demo';
 import { normalizeSolanaNetwork } from '@/lib/web3';
 
@@ -33,10 +34,59 @@ function getPlatformFeeBps(): number {
   return Math.max(0, Math.min(10_000, Math.floor(parsed)));
 }
 
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('timeout')), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function checkProgramDeployment(rpcUrl: string | undefined, programId: string, enabled: boolean) {
+  if (!enabled || !rpcUrl || !programId) {
+    return { checked: false, accountFound: false, executable: false, deployed: false };
+  }
+
+  try {
+    const publicKey = new PublicKey(programId);
+    const connection = new Connection(rpcUrl, 'confirmed');
+    const account = await withTimeout(connection.getAccountInfo(publicKey, 'confirmed'), 6_000);
+
+    return {
+      checked: true,
+      accountFound: Boolean(account),
+      executable: Boolean(account?.executable),
+      deployed: Boolean(account?.executable),
+      owner: account?.owner.toBase58() || null,
+      lamports: account?.lamports || 0,
+    };
+  } catch (error) {
+    return {
+      checked: true,
+      accountFound: false,
+      executable: false,
+      deployed: false,
+      error: error instanceof Error ? error.message : 'unknown_error',
+    };
+  }
+}
+
 export async function GET() {
   const network = normalizeSolanaNetwork(process.env.SOLANA_NETWORK);
   const programId = process.env.SOLANA_ESCROW_PROGRAM_ID || '';
   const programIdConfigured = configured(programId) && !PLACEHOLDER_PROGRAM_IDS.has(programId);
+  const shouldCheckProgramDeployment = process.env.SOLANA_CHECK_PROGRAM_DEPLOYMENT !== 'false';
+  const programDeployment = await checkProgramDeployment(
+    process.env.SOLANA_RPC_URL,
+    programId,
+    programIdConfigured && shouldCheckProgramDeployment
+  );
   const devnetDemoEnabled = isDevnetDemoEnabled(network);
   const validateSignatures = isEnabled(process.env.SOLANA_VALIDATE_TX_SIGNATURES);
   const fallbackToLocal = process.env.SOLANA_DEVNET_DEMO_FALLBACK_TO_LOCAL !== 'false';
@@ -50,6 +100,9 @@ export async function GET() {
   }
   if (!programIdConfigured) {
     blockers.push('solana_escrow_program_id_missing_or_placeholder');
+  }
+  if (programIdConfigured && programDeployment.checked && !programDeployment.deployed) {
+    blockers.push(programDeployment.error ? 'solana_escrow_program_deployment_check_failed' : 'solana_escrow_program_not_deployed_or_not_executable');
   }
   if (network === 'mainnet-beta' && devnetDemoEnabled) {
     blockers.push('devnet_demo_enabled_on_mainnet_target');
@@ -66,8 +119,8 @@ export async function GET() {
     checkedAt: new Date().toISOString(),
     readiness: {
       testDeployUsable: blockers.every((blocker) => blocker !== 'privy_env_missing' && blocker !== 'solana_rpc_missing'),
-      contractReady: programIdConfigured,
-      mainnetReady: network === 'mainnet-beta' && programIdConfigured && validateSignatures && !devnetDemoEnabled && !fallbackToLocal,
+      contractReady: programIdConfigured && (!programDeployment.checked || programDeployment.deployed),
+      mainnetReady: network === 'mainnet-beta' && programIdConfigured && (!programDeployment.checked || programDeployment.deployed) && validateSignatures && !devnetDemoEnabled && !fallbackToLocal,
       blockers,
     },
     privy: {
@@ -80,6 +133,7 @@ export async function GET() {
       rpcConfigured: configured(process.env.SOLANA_RPC_URL),
       rpcHost: rpcHost(process.env.SOLANA_RPC_URL),
       escrowProgramIdConfigured: programIdConfigured,
+      escrowProgramDeployment: programDeployment,
       validateTxSignatures: validateSignatures,
     },
     devnetDemo: {
