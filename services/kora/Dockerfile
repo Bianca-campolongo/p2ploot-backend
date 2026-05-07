@@ -1,6 +1,6 @@
 FROM rust:1.88
 
-RUN cargo install kora-cli
+RUN cargo install kora-cli --version 2.0.5 --locked
 
 WORKDIR /app
 COPY kora.toml ./
