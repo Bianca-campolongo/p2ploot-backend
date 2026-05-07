@@ -29,6 +29,25 @@ async function login(email) {
   return data;
 }
 
+async function findSmokeAdId(sellerId) {
+  if (process.env.SMOKE_AD_ID) {
+    return process.env.SMOKE_AD_ID;
+  }
+
+  const title = process.env.SMOKE_AD_TITLE || 'Smoke Web3 Devnet QA';
+  const query = new URLSearchParams({
+    sellerId,
+    search: title,
+  });
+  const ads = await request('GET', `/api/ads?${query.toString()}`);
+
+  if (Array.isArray(ads) && ads[0]?.id) {
+    return ads[0].id;
+  }
+
+  return process.env.SMOKE_DEFAULT_AD_ID || '1';
+}
+
 async function createDevnetDemoWallet(token) {
   const data = await request('POST', '/api/web3/wallets/devnet-demo', null, token);
   assert(data.wallet?.address, 'Missing devnet demo wallet');
@@ -75,13 +94,14 @@ async function main() {
   const health = await request('GET', '/api/health');
   assert(health.status === 'ok', 'Health check is not ok');
 
-  const buyer = await login('player2@talon.com');
-  const seller = await login('player1@talon.com');
+  const buyer = await login(process.env.SMOKE_BUYER_EMAIL || 'player2@talon.com');
+  const seller = await login(process.env.SMOKE_SELLER_EMAIL || 'player1@talon.com');
 
   const buyerWallet = await createDevnetDemoWallet(buyer.token);
   const sellerWallet = await createDevnetDemoWallet(seller.token);
 
-  const conversationId = await createConversation(1, buyer.token, `Smoke Web3 devnet ${Date.now()}`);
+  const adId = await findSmokeAdId(seller.user.id);
+  const conversationId = await createConversation(adId, buyer.token, `Smoke Web3 devnet ${Date.now()}`);
   const deal = await createEscrow(buyer.token, conversationId);
 
   let current = await patchEscrow(buyer.token, deal.id, 'record_deposit');
@@ -118,6 +138,7 @@ async function main() {
     ok: true,
     mode: releaseMode || depositMode || 'solana_devnet_system_transfer_demo',
     deal: deal.id,
+    adId,
     buyerWallet: buyerWallet.wallet.address,
     sellerWallet: sellerWallet.wallet.address,
     vaultAddress: current.vaultAddress,

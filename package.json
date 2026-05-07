@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev -p 6110",
     "build": "prisma generate && next build",
-    "start": "node scripts/repair-dokploy-migrations.js && prisma migrate deploy && next start",
+    "start": "node scripts/repair-dokploy-migrations.js && prisma migrate deploy && node scripts/seed-web3-smoke-data.js && next start",
     "lint": "next lint",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
