@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, type AuthUser } from '@/lib/auth';
 import { deepSerialize } from '@/lib/serialize';
+import { autoReleaseDueEscrows } from '@/lib/escrow-auto-release';
 import { ESCROW_TERMINAL_STATUSES, isAdminUser, normalizeSolanaNetwork } from '@/lib/web3';
 
 export const dynamic = 'force-dynamic';
@@ -25,7 +26,7 @@ const dealInclude = {
   buyer: { select: { id: true, username: true, email: true, walletAddress: true, reputationScore: true } },
   seller: { select: { id: true, username: true, email: true, walletAddress: true, reputationScore: true } },
   createdBy: { select: { id: true, username: true, email: true } },
-  ad: { select: { id: true, title: true, price: true, currency: true, game: true, server: true, region: true } },
+  ad: { select: { id: true, title: true, price: true, currency: true, game: true, server: true, region: true, deliveryWindowHours: true } },
   conversation: { select: { id: true, buyerId: true, sellerId: true, adId: true, isCompleted: true } },
   events: {
     orderBy: { createdAt: 'desc' as const },
@@ -47,6 +48,8 @@ async function listEscrows(req: NextRequest, user: AuthUser) {
   const conversationId = url.searchParams.get('conversationId') || undefined;
   const status = url.searchParams.get('status') || undefined;
   const adId = parseOptionalAdId(url.searchParams.get('adId'));
+
+  await autoReleaseDueEscrows({ conversationId, adId });
 
   const deals = await prisma.escrowDeal.findMany({
     where: {
@@ -122,6 +125,7 @@ async function createEscrow(req: NextRequest, user: AuthUser) {
             server: true,
             region: true,
             type: true,
+            deliveryWindowHours: true,
           },
         })
       : null;
@@ -163,8 +167,11 @@ async function createEscrow(req: NextRequest, user: AuthUser) {
                 server: ad.server,
                 region: ad.region,
                 type: ad.type,
+                deliveryWindowHours: ad.deliveryWindowHours,
               }
             : null,
+          deliveryWindowHours: ad?.deliveryWindowHours || 24,
+          buyerConfirmationHours: 24,
         },
         events: {
           create: {

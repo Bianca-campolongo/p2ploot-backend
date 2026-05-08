@@ -81,6 +81,7 @@ export async function GET(req: NextRequest) {
                 image_url: base.imageUrl,
                 user_id: base.userId,
                 seller_address: base.sellerAddress,
+                delivery_window_hours: base.deliveryWindowHours,
                 images: base.imageUrl ? [base.imageUrl] : []
             };
         });
@@ -104,6 +105,8 @@ const createAdSchema = z.object({
     type: z.string().optional(),
     images: z.array(z.string()).optional(),
     imageUrl: z.string().optional().nullable(),
+    deliveryWindowHours: z.coerce.number().int().min(1).max(72).optional(),
+    delivery_window_hours: z.coerce.number().int().min(1).max(72).optional(),
     status: z.string().optional(),
     expires_at: z.string().optional(),
     last_renewed_at: z.string().optional()
@@ -147,6 +150,7 @@ async function createAd(req: NextRequest, user: any) {
             });
 
             // 2. Create Ad
+            const deliveryWindowHours = data.deliveryWindowHours ?? data.delivery_window_hours ?? 24;
             const ad = await tx.marketAd.create({
                 data: {
                     userId: user.id,
@@ -159,6 +163,7 @@ async function createAd(req: NextRequest, user: any) {
                     region: data.region,
                     type: data.type,
                     imageUrl: data.images?.[0] || data.imageUrl || null,
+                    deliveryWindowHours,
                     status: 'pending',
                     sellerAddress: user.walletAddress,
                     expiresAt: null, // Only set upon approval
@@ -174,6 +179,7 @@ async function createAd(req: NextRequest, user: any) {
             ...base,
             image_url: base.imageUrl,
             user_id: base.userId,
+            delivery_window_hours: base.deliveryWindowHours,
             images: base.imageUrl ? [base.imageUrl] : []
         }));
     } catch (error: any) {

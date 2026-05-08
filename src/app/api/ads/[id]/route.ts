@@ -35,6 +35,7 @@ async function getAd(req: NextRequest, user: any, params: { id: string }) {
                 image_url: ad.imageUrl,
                 user_id: ad.userId,
                 seller_address: ad.sellerAddress,
+                delivery_window_hours: ad.deliveryWindowHours,
             }
         });
     } catch (error) {
@@ -54,6 +55,8 @@ const updateAdSchema = z.object({
     region: z.string().optional(),
     type: z.string().optional(),
     images: z.array(z.string()).optional(),
+    deliveryWindowHours: z.coerce.number().int().min(1).max(72).optional(),
+    delivery_window_hours: z.coerce.number().int().min(1).max(72).optional(),
 });
 
 async function updateAd(req: NextRequest, user: any, params: { id: string }) {
@@ -88,6 +91,9 @@ async function updateAd(req: NextRequest, user: any, params: { id: string }) {
         if (data.server !== undefined) updateData.server = data.server;
         if (data.region !== undefined) updateData.region = data.region;
         if (data.type !== undefined) updateData.type = data.type;
+        if (data.deliveryWindowHours !== undefined || data.delivery_window_hours !== undefined) {
+            updateData.deliveryWindowHours = data.deliveryWindowHours ?? data.delivery_window_hours;
+        }
 
         // Fields allowed ONLY if pending (Freestyle text or images)
         if (isPending) {

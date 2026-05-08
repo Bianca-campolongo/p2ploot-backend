@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, type AuthUser } from '@/lib/auth';
+import { autoReleaseDueEscrows } from '@/lib/escrow-auto-release';
 import { deepSerialize } from '@/lib/serialize';
 import {
   executeAnchorEscrowDemoAction,
@@ -22,6 +23,7 @@ import { canReadEscrow, hasTerminalEscrowStatus, isAdminUser } from '@/lib/web3'
 export const dynamic = 'force-dynamic';
 
 type EscrowChainTxResult = DevnetDemoTxResult | AnchorEscrowDemoTxResult;
+const BUYER_CONFIRMATION_HOURS = Number(process.env.ESCROW_BUYER_CONFIRMATION_HOURS || 24);
 
 const updateEscrowSchema = z.object({
   action: z.enum([
@@ -45,7 +47,7 @@ const dealInclude = {
   buyer: { select: { id: true, username: true, email: true, walletAddress: true, reputationScore: true } },
   seller: { select: { id: true, username: true, email: true, walletAddress: true, reputationScore: true } },
   createdBy: { select: { id: true, username: true, email: true } },
-  ad: { select: { id: true, title: true, price: true, currency: true, game: true, server: true, region: true } },
+  ad: { select: { id: true, title: true, price: true, currency: true, game: true, server: true, region: true, deliveryWindowHours: true } },
   conversation: { select: { id: true, buyerId: true, sellerId: true, adId: true, isCompleted: true } },
   events: {
     orderBy: { createdAt: 'desc' as const },
@@ -73,6 +75,10 @@ function requireTxSignature(action: string, txSignature?: string): string {
   return txSignature;
 }
 
+function asRecord(value: unknown): Record<string, any> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : {};
+}
+
 function anchorTxField<K extends keyof AnchorEscrowDemoTxResult>(
   tx: EscrowChainTxResult | null,
   key: K
@@ -85,6 +91,8 @@ async function getEscrow(_req: NextRequest, user: AuthUser, context?: { params: 
   if (!id) {
     return NextResponse.json({ error: 'Missing escrow id' }, { status: 400 });
   }
+
+  await autoReleaseDueEscrows();
 
   const deal = await prisma.escrowDeal.findUnique({
     where: { id },
@@ -108,6 +116,8 @@ async function updateEscrow(req: NextRequest, user: AuthUser, context?: { params
     if (!id) {
       return NextResponse.json({ error: 'Missing escrow id' }, { status: 400 });
     }
+
+    await autoReleaseDueEscrows();
 
     const body = updateEscrowSchema.parse(await req.json());
     const admin = isAdminUser(user);
@@ -269,10 +279,16 @@ async function updateEscrow(req: NextRequest, user: AuthUser, context?: { params
             fail(409, `Cannot confirm seller delivery from status ${deal.status}`);
           }
           nextStatus = 'seller_confirmed';
+          const buyerAutoReleaseAt = new Date(now.getTime() + BUYER_CONFIRMATION_HOURS * 60 * 60 * 1000);
           Object.assign(data, {
             status: nextStatus,
             sellerConfirmTx: txSignature || null,
             sellerConfirmedAt: now,
+            metadata: {
+              ...asRecord(deal.metadata),
+              buyerAutoReleaseAt: buyerAutoReleaseAt.toISOString(),
+              buyerConfirmationHours: BUYER_CONFIRMATION_HOURS,
+            },
           });
           eventType = 'seller_confirmed';
           break;
