@@ -36,6 +36,7 @@ async function getAd(req: NextRequest, user: any, params: { id: string }) {
                 user_id: ad.userId,
                 seller_address: ad.sellerAddress,
                 delivery_window_hours: ad.deliveryWindowHours,
+                cloak_seller_privacy_enabled: ad.cloakSellerPrivacyEnabled,
             }
         });
     } catch (error) {
@@ -57,6 +58,8 @@ const updateAdSchema = z.object({
     images: z.array(z.string()).optional(),
     deliveryWindowHours: z.coerce.number().int().min(1).max(72).optional(),
     delivery_window_hours: z.coerce.number().int().min(1).max(72).optional(),
+    cloakSellerPrivacyEnabled: z.coerce.boolean().optional(),
+    cloak_seller_privacy_enabled: z.coerce.boolean().optional(),
 });
 
 async function updateAd(req: NextRequest, user: any, params: { id: string }) {
@@ -93,6 +96,9 @@ async function updateAd(req: NextRequest, user: any, params: { id: string }) {
         if (data.type !== undefined) updateData.type = data.type;
         if (data.deliveryWindowHours !== undefined || data.delivery_window_hours !== undefined) {
             updateData.deliveryWindowHours = data.deliveryWindowHours ?? data.delivery_window_hours;
+        }
+        if (data.cloakSellerPrivacyEnabled !== undefined || data.cloak_seller_privacy_enabled !== undefined) {
+            updateData.cloakSellerPrivacyEnabled = data.cloakSellerPrivacyEnabled ?? data.cloak_seller_privacy_enabled;
         }
 
         // Fields allowed ONLY if pending (Freestyle text or images)

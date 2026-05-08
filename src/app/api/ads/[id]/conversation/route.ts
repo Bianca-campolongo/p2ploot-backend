@@ -39,23 +39,52 @@ async function getAdConversations(req: NextRequest, user: any, params: { id: str
                         orderBy: { createdAt: 'desc' },
                         take: 1,
                         select: { senderId: true }
+                    },
+                    escrowDeals: {
+                        orderBy: { createdAt: 'desc' },
+                        take: 1,
+                        select: {
+                            id: true,
+                            status: true,
+                            metadata: true
+                        }
                     }
                 },
                 orderBy: { createdAt: 'desc' }
             });
 
-            const enrichedConversations = conversations.map(conv => ({
-                id: conv.id,
-                buyer_id: conv.buyerId,
-                seller_id: conv.sellerId,
-                ad_id: String(conv.adId),
-                created_at: conv.createdAt.toISOString(),
-                buyer: conv.buyer,
-                needs_reply: conv.messages.length > 0 && conv.messages[0].senderId !== user.id,
-                buyerConfirmed: conv.buyerConfirmed || false,
-                sellerConfirmed: conv.sellerConfirmed || false,
-                isCompleted: conv.isCompleted || false
-            }));
+            const enrichedConversations = conversations.map(conv => {
+                const latestEscrow = conv.escrowDeals[0];
+                const metadata = latestEscrow?.metadata && typeof latestEscrow.metadata === 'object' && !Array.isArray(latestEscrow.metadata)
+                    ? latestEscrow.metadata as Record<string, any>
+                    : {};
+                const cloakPrivacy = metadata.cloakPrivacy && typeof metadata.cloakPrivacy === 'object' && !Array.isArray(metadata.cloakPrivacy)
+                    ? metadata.cloakPrivacy as Record<string, any>
+                    : {};
+                const buyerPrivacyRequested = Boolean(cloakPrivacy.buyerRequested);
+
+                return {
+                    id: conv.id,
+                    buyer_id: conv.buyerId,
+                    seller_id: conv.sellerId,
+                    ad_id: String(conv.adId),
+                    created_at: conv.createdAt.toISOString(),
+                    buyer: buyerPrivacyRequested ? { id: conv.buyer.id, username: 'Comprador privado via Cloak' } : conv.buyer,
+                    buyer_privacy_requested: buyerPrivacyRequested,
+                    privacy: {
+                        cloak: {
+                            enabled: Boolean(cloakPrivacy.enabled),
+                            sellerRequested: Boolean(cloakPrivacy.sellerRequested),
+                            buyerRequested: buyerPrivacyRequested,
+                        }
+                    },
+                    latest_escrow_status: latestEscrow?.status || null,
+                    needs_reply: conv.messages.length > 0 && conv.messages[0].senderId !== user.id,
+                    buyerConfirmed: conv.buyerConfirmed || false,
+                    sellerConfirmed: conv.sellerConfirmed || false,
+                    isCompleted: conv.isCompleted || false
+                };
+            });
 
             return NextResponse.json({
                 isOwner: true,

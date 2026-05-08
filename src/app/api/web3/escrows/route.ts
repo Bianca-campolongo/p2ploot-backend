@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth, type AuthUser } from '@/lib/auth';
 import { deepSerialize } from '@/lib/serialize';
 import { autoReleaseDueEscrows } from '@/lib/escrow-auto-release';
+import { buildCloakPrivacyMetadata } from '@/lib/cloak-privacy';
 import { ESCROW_TERMINAL_STATUSES, isAdminUser, normalizeSolanaNetwork } from '@/lib/web3';
 
 export const dynamic = 'force-dynamic';
@@ -26,7 +27,7 @@ const dealInclude = {
   buyer: { select: { id: true, username: true, email: true, walletAddress: true, reputationScore: true } },
   seller: { select: { id: true, username: true, email: true, walletAddress: true, reputationScore: true } },
   createdBy: { select: { id: true, username: true, email: true } },
-  ad: { select: { id: true, title: true, price: true, currency: true, game: true, server: true, region: true, deliveryWindowHours: true } },
+  ad: { select: { id: true, title: true, price: true, currency: true, game: true, server: true, region: true, deliveryWindowHours: true, cloakSellerPrivacyEnabled: true } },
   conversation: { select: { id: true, buyerId: true, sellerId: true, adId: true, isCompleted: true } },
   events: {
     orderBy: { createdAt: 'desc' as const },
@@ -126,6 +127,7 @@ async function createEscrow(req: NextRequest, user: AuthUser) {
             region: true,
             type: true,
             deliveryWindowHours: true,
+            cloakSellerPrivacyEnabled: true,
           },
         })
       : null;
@@ -135,6 +137,11 @@ async function createEscrow(req: NextRequest, user: AuthUser) {
     const network = normalizeSolanaNetwork(body.network);
     const expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
     const platformFeeBps = Number(process.env.PLATFORM_FEE_BPS || 250);
+    const bodyCloakPrivacy = body.metadata?.cloakPrivacy || {};
+    const cloakPrivacy = buildCloakPrivacyMetadata({
+      sellerRequested: Boolean(ad?.cloakSellerPrivacyEnabled || bodyCloakPrivacy.sellerRequested),
+      buyerRequested: Boolean(bodyCloakPrivacy.buyerRequested),
+    });
 
     const deal = await prisma.escrowDeal.create({
       data: {
@@ -168,10 +175,12 @@ async function createEscrow(req: NextRequest, user: AuthUser) {
                 region: ad.region,
                 type: ad.type,
                 deliveryWindowHours: ad.deliveryWindowHours,
+                cloakSellerPrivacyEnabled: ad.cloakSellerPrivacyEnabled,
               }
             : null,
           deliveryWindowHours: ad?.deliveryWindowHours || 24,
           buyerConfirmationHours: 24,
+          cloakPrivacy,
         },
         events: {
           create: {
@@ -185,6 +194,7 @@ async function createEscrow(req: NextRequest, user: AuthUser) {
               amountUi,
               amountRaw: body.amountRaw,
               platformFeeBps,
+              cloakPrivacy,
             },
           },
         },

@@ -47,7 +47,7 @@ const dealInclude = {
   buyer: { select: { id: true, username: true, email: true, walletAddress: true, reputationScore: true } },
   seller: { select: { id: true, username: true, email: true, walletAddress: true, reputationScore: true } },
   createdBy: { select: { id: true, username: true, email: true } },
-  ad: { select: { id: true, title: true, price: true, currency: true, game: true, server: true, region: true, deliveryWindowHours: true } },
+  ad: { select: { id: true, title: true, price: true, currency: true, game: true, server: true, region: true, deliveryWindowHours: true, cloakSellerPrivacyEnabled: true } },
   conversation: { select: { id: true, buyerId: true, sellerId: true, adId: true, isCompleted: true } },
   events: {
     orderBy: { createdAt: 'desc' as const },

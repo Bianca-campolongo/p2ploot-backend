@@ -82,6 +82,7 @@ export async function GET(req: NextRequest) {
                 user_id: base.userId,
                 seller_address: base.sellerAddress,
                 delivery_window_hours: base.deliveryWindowHours,
+                cloak_seller_privacy_enabled: base.cloakSellerPrivacyEnabled,
                 images: base.imageUrl ? [base.imageUrl] : []
             };
         });
@@ -107,6 +108,8 @@ const createAdSchema = z.object({
     imageUrl: z.string().optional().nullable(),
     deliveryWindowHours: z.coerce.number().int().min(1).max(72).optional(),
     delivery_window_hours: z.coerce.number().int().min(1).max(72).optional(),
+    cloakSellerPrivacyEnabled: z.coerce.boolean().optional(),
+    cloak_seller_privacy_enabled: z.coerce.boolean().optional(),
     status: z.string().optional(),
     expires_at: z.string().optional(),
     last_renewed_at: z.string().optional()
@@ -151,6 +154,7 @@ async function createAd(req: NextRequest, user: any) {
 
             // 2. Create Ad
             const deliveryWindowHours = data.deliveryWindowHours ?? data.delivery_window_hours ?? 24;
+            const cloakSellerPrivacyEnabled = data.cloakSellerPrivacyEnabled ?? data.cloak_seller_privacy_enabled ?? false;
             const ad = await tx.marketAd.create({
                 data: {
                     userId: user.id,
@@ -164,6 +168,7 @@ async function createAd(req: NextRequest, user: any) {
                     type: data.type,
                     imageUrl: data.images?.[0] || data.imageUrl || null,
                     deliveryWindowHours,
+                    cloakSellerPrivacyEnabled,
                     status: 'pending',
                     sellerAddress: user.walletAddress,
                     expiresAt: null, // Only set upon approval
@@ -180,6 +185,7 @@ async function createAd(req: NextRequest, user: any) {
             image_url: base.imageUrl,
             user_id: base.userId,
             delivery_window_hours: base.deliveryWindowHours,
+            cloak_seller_privacy_enabled: base.cloakSellerPrivacyEnabled,
             images: base.imageUrl ? [base.imageUrl] : []
         }));
     } catch (error: any) {
