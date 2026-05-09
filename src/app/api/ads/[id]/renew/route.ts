@@ -38,8 +38,39 @@ async function renewAd(req: NextRequest, user: any) {
         }
 
         // 2. Calculate cost
-        const RENEWAL_COST_PER_DAY = 0.5;
+        const RENEWAL_COST_PER_DAY = 0;
         const cost = days * RENEWAL_COST_PER_DAY;
+
+        if (cost <= 0) {
+            const now = new Date();
+            let newExpiresAt = new Date(ad.expiresAt || now);
+
+            if (newExpiresAt < now) {
+                newExpiresAt = now;
+            }
+
+            newExpiresAt.setDate(newExpiresAt.getDate() + days);
+
+            const result = await prisma.marketAd.update({
+                where: { id: ad.id },
+                data: {
+                    expiresAt: newExpiresAt,
+                    lastRenewedAt: now,
+                    status: 'active'
+                }
+            });
+
+            return NextResponse.json({
+                success: true,
+                ad: {
+                    ...result,
+                    id: result.id.toString(),
+                    expiresAt: result.expiresAt?.toISOString(),
+                    lastRenewedAt: result.lastRenewedAt?.toISOString()
+                },
+                message: `Anuncio renovado por ${days} dias.`
+            });
+        }
 
         // 3. Transaction: Check balance, debit, update ad
         const result = await prisma.$transaction(async (tx) => {

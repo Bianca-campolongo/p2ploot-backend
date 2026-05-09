@@ -116,10 +116,45 @@ const createAdSchema = z.object({
 });
 
 async function createAd(req: NextRequest, user: any) {
-    const AD_CREATION_COST = 1;
+    const AD_CREATION_COST = 0;
     try {
         const body = await req.json();
         const data = createAdSchema.parse(body);
+
+        if (AD_CREATION_COST <= 0) {
+            const deliveryWindowHours = data.deliveryWindowHours ?? data.delivery_window_hours ?? 24;
+            const cloakSellerPrivacyEnabled = data.cloakSellerPrivacyEnabled ?? data.cloak_seller_privacy_enabled ?? false;
+            const ad = await prisma.marketAd.create({
+                data: {
+                    userId: user.id,
+                    title: data.title,
+                    description: data.description || '',
+                    price: data.price,
+                    currency: data.currency,
+                    game: data.game,
+                    server: data.server,
+                    region: data.region,
+                    type: data.type,
+                    imageUrl: data.images?.[0] || data.imageUrl || null,
+                    deliveryWindowHours,
+                    cloakSellerPrivacyEnabled,
+                    status: 'pending',
+                    sellerAddress: user.walletAddress,
+                    expiresAt: null,
+                    lastRenewedAt: new Date(),
+                }
+            });
+
+            const base = deepSerialize(ad);
+            return NextResponse.json(deepSerialize({
+                ...base,
+                image_url: base.imageUrl,
+                user_id: base.userId,
+                delivery_window_hours: base.deliveryWindowHours,
+                cloak_seller_privacy_enabled: base.cloakSellerPrivacyEnabled,
+                images: base.imageUrl ? [base.imageUrl] : []
+            }));
+        }
 
         // Transaction: Debit credits AND Create Ad
         const result = await prisma.$transaction(async (tx) => {

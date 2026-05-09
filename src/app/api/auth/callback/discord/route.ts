@@ -4,8 +4,63 @@ import { generateToken, generateRefreshToken } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
+type OAuthState = {
+  frontendUrl?: string;
+  returnTo?: string;
+};
+
+function getDiscordRedirectUri(nextAuthUrl: string) {
+  return process.env.DISCORD_REDIRECT_URI?.trim() || `${nextAuthUrl}/api/auth/callback/discord`;
+}
+
+function decodeOAuthState(rawState: string | null): OAuthState {
+  if (!rawState) return {};
+  try {
+    return JSON.parse(Buffer.from(rawState, 'base64url').toString('utf8'));
+  } catch (error) {
+    console.warn('[Discord Callback] Invalid OAuth state:', error);
+    return {};
+  }
+}
+
+function isAllowedFrontendUrl(value?: string | null): value is string {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    const host = url.hostname;
+    return (
+      url.protocol === 'http:' || url.protocol === 'https:'
+    ) && (
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host.endsWith('.p2ploot.com') ||
+      host === 'p2ploot.com' ||
+      host.endsWith('.p2ploot.com.br') ||
+      host === 'p2ploot.com.br'
+    );
+  } catch {
+    return false;
+  }
+}
+
+function safeReturnPath(value?: string | null) {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return '/pt';
+  return value;
+}
+
+function buildFrontendRedirect(frontendUrl: string, returnTo: string, params: Record<string, string>) {
+  const redirectUrl = new URL(safeReturnPath(returnTo), frontendUrl);
+  Object.entries(params).forEach(([key, value]) => redirectUrl.searchParams.set(key, value));
+  return redirectUrl;
+}
+
 // Função auxiliar para detectar URL do frontend
-function getFrontendUrl(request: NextRequest): string {
+function getFrontendUrl(request: NextRequest, state: OAuthState = {}): string {
+  if (isAllowedFrontendUrl(state.frontendUrl)) {
+    console.log('[Discord Callback] Using frontend URL from OAuth state:', state.frontendUrl);
+    return state.frontendUrl;
+  }
+
   // Detectar dinamicamente a origem para facilitar testes locais em portas variadas
   const origin = request.headers.get('origin') || request.headers.get('referer');
   if (origin) {
@@ -56,20 +111,22 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get('code');
     const error = searchParams.get('error');
+    const state = decodeOAuthState(searchParams.get('state'));
+    const returnTo = safeReturnPath(state.returnTo);
 
     if (error) {
       console.error('[Discord Callback] Erro do Discord:', error);
-      const frontendUrl = getFrontendUrl(request);
+      const frontendUrl = getFrontendUrl(request, state);
       return Response.redirect(
-        new URL(`/?error=${encodeURIComponent(error)}`, frontendUrl)
+        buildFrontendRedirect(frontendUrl, returnTo, { error })
       );
     }
 
     if (!code) {
       console.error('[Discord Callback] Código não recebido');
-      const frontendUrl = getFrontendUrl(request);
+      const frontendUrl = getFrontendUrl(request, state);
       return Response.redirect(
-        new URL('/?error=no_code', frontendUrl)
+        buildFrontendRedirect(frontendUrl, returnTo, { error: 'no_code' })
       );
     }
 
@@ -85,7 +142,7 @@ export async function GET(request: NextRequest) {
       throw new Error('Discord OAuth não configurado corretamente');
     }
 
-    const redirectUri = `${nextAuthUrl}/api/auth/callback/discord`;
+    const redirectUri = getDiscordRedirectUri(nextAuthUrl);
 
     // Trocar code por access token
     const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
@@ -217,9 +274,9 @@ export async function GET(request: NextRequest) {
 
     if (isBannedByDiscord || isBannedByEmail) {
       console.log('[Discord Callback] 🚫 Usuário banido tentou logar:', user.id);
-      const frontendUrl = getFrontendUrl(request);
+      const frontendUrl = getFrontendUrl(request, state);
       return Response.redirect(
-        new URL('/?error=permanently_banned', frontendUrl)
+        buildFrontendRedirect(frontendUrl, returnTo, { error: 'permanently_banned' })
       );
     }
 
@@ -239,11 +296,12 @@ export async function GET(request: NextRequest) {
     });
 
     // Detectar URL do frontend
-    const frontendUrl = getFrontendUrl(request);
-    const redirectUrl = new URL(
-      `/?token=${token}&refreshToken=${refreshToken}&discordLogin=true`,
-      frontendUrl
-    );
+    const frontendUrl = getFrontendUrl(request, state);
+    const redirectUrl = buildFrontendRedirect(frontendUrl, returnTo, {
+      token,
+      refreshToken,
+      discordLogin: 'true',
+    });
 
     console.log('[Discord Callback] ✅ Sucesso! Redirecionando para:', redirectUrl.toString());
 
@@ -253,16 +311,15 @@ export async function GET(request: NextRequest) {
     console.error('[Discord Callback] Stack:', error instanceof Error ? error.stack : 'N/A');
 
     // Detectar URL do frontend para erro também
-    const frontendUrl = getFrontendUrl(request);
+    const state = decodeOAuthState(request.nextUrl.searchParams.get('state'));
+    const frontendUrl = getFrontendUrl(request, state);
+    const returnTo = safeReturnPath(state.returnTo);
     const errorMessage = error instanceof Error ? error.message : 'Failed to authenticate with Discord';
 
     console.log('[Discord Callback] Redirecionando para erro em:', frontendUrl);
 
     return Response.redirect(
-      new URL(
-        `/?error=${encodeURIComponent(errorMessage)}`,
-        frontendUrl
-      )
+      buildFrontendRedirect(frontendUrl, returnTo, { error: errorMessage })
     );
   }
 }

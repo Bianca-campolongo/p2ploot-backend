@@ -7,7 +7,7 @@ import { deepSerialize } from '@/lib/serialize';
 export const dynamic = 'force-dynamic';
 
 const createGuildSchema = z.object({
-  name: z.string().min(3).max(255),
+  name: z.string().trim().min(1, 'Nome da guilda e obrigatorio').max(255),
   description: z.string().optional(),
   maxMembers: z.number().int().min(1).max(1000).default(50),
   discordUrl: z.string().url().optional().or(z.literal('')).or(z.null()),

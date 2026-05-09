@@ -18,7 +18,6 @@ export const disputeInclude = {
           messages: {
             include: { sender: { select: { id: true, username: true, email: true } } },
             orderBy: { createdAt: 'asc' as const },
-            take: 80,
           },
         },
       },

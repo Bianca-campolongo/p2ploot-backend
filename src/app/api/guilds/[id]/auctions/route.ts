@@ -11,7 +11,8 @@ async function listAuctions(req: NextRequest, params: { id: string }) {
         const { searchParams } = new URL(req.url);
         const status = searchParams.get('status'); // 'warehouse', 'active', 'upcoming', 'closed'
         const page = parseInt(searchParams.get('page') || '1');
-        const limit = parseInt(searchParams.get('limit') || '20');
+        const requestedLimit = parseInt(searchParams.get('limit') || '20');
+        const limit = Math.min(Math.max(requestedLimit || 20, 1), 50);
         const favoritesOnly = searchParams.get('favoritesOnly') === 'true';
         const search = searchParams.get('search');
         const delivered = searchParams.get('delivered');
