@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth, type AuthUser } from '@/lib/auth';
 import { deepSerialize } from '@/lib/serialize';
 import { isAdminUser } from '@/lib/web3';
-import { disputeInclude } from '@/lib/escrow-disputes';
+import { disputeInclude, shapeDisputeForViewer } from '@/lib/escrow-disputes';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +28,7 @@ async function listDisputes(req: NextRequest, user: AuthUser) {
     take: 100,
   });
 
-  return NextResponse.json({ disputes: deepSerialize(disputes) });
+  return NextResponse.json({ disputes: deepSerialize(disputes.map((dispute) => shapeDisputeForViewer(dispute, user))) });
 }
 
 export const GET = requireAuth(listDisputes);

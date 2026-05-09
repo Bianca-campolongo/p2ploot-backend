@@ -5,6 +5,7 @@ import { requireAuth, type AuthUser } from '@/lib/auth';
 import { deepSerialize } from '@/lib/serialize';
 import { autoReleaseDueEscrows } from '@/lib/escrow-auto-release';
 import { buildCloakPrivacyMetadata } from '@/lib/cloak-privacy';
+import { shapeEscrowDealForViewer, shapeEscrowDealsForViewer } from '@/lib/escrow-disputes';
 import { ESCROW_TERMINAL_STATUSES, isAdminUser, normalizeSolanaNetwork } from '@/lib/web3';
 
 export const dynamic = 'force-dynamic';
@@ -80,7 +81,7 @@ async function listEscrows(req: NextRequest, user: AuthUser) {
     take: 100,
   });
 
-  return NextResponse.json({ deals: deepSerialize(deals) });
+  return NextResponse.json({ deals: deepSerialize(shapeEscrowDealsForViewer(deals, user)) });
 }
 
 async function createEscrow(req: NextRequest, user: AuthUser) {
@@ -123,7 +124,7 @@ async function createEscrow(req: NextRequest, user: AuthUser) {
     });
 
     if (existingActiveDeal) {
-      return NextResponse.json({ deal: deepSerialize(existingActiveDeal), reused: true });
+      return NextResponse.json({ deal: deepSerialize(shapeEscrowDealForViewer(existingActiveDeal, user)), reused: true });
     }
 
     const ad = conversation.adId
@@ -214,7 +215,7 @@ async function createEscrow(req: NextRequest, user: AuthUser) {
       include: dealInclude,
     });
 
-    return NextResponse.json({ deal: deepSerialize(deal) }, { status: 201 });
+    return NextResponse.json({ deal: deepSerialize(shapeEscrowDealForViewer(deal, user)) }, { status: 201 });
   } catch (error) {
     console.error('Error creating escrow:', error);
 

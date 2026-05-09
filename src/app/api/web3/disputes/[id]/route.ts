@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, type AuthUser } from '@/lib/auth';
 import { deepSerialize } from '@/lib/serialize';
-import { disputeInclude } from '@/lib/escrow-disputes';
+import { disputeInclude, shapeDisputeForViewer } from '@/lib/escrow-disputes';
 import { isAdminUser } from '@/lib/web3';
 
 export const dynamic = 'force-dynamic';
@@ -57,7 +57,7 @@ async function getDispute(_req: NextRequest, user: AuthUser, context?: { params:
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  return NextResponse.json({ dispute: deepSerialize(dispute) });
+  return NextResponse.json({ dispute: deepSerialize(shapeDisputeForViewer(dispute, user)) });
 }
 
 async function updateDispute(req: NextRequest, user: AuthUser, context?: { params: { id: string } }) {
@@ -117,7 +117,7 @@ async function updateDispute(req: NextRequest, user: AuthUser, context?: { param
       return updated;
     });
 
-    return NextResponse.json({ dispute: deepSerialize(dispute) });
+    return NextResponse.json({ dispute: deepSerialize(shapeDisputeForViewer(dispute, user)) });
   } catch (error) {
     console.error('Error updating dispute:', error);
 

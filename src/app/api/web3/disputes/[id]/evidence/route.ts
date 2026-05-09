@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, type AuthUser } from '@/lib/auth';
 import { deepSerialize } from '@/lib/serialize';
-import { disputeInclude } from '@/lib/escrow-disputes';
+import { disputeInclude, shapeDisputeForViewer } from '@/lib/escrow-disputes';
 import { isAdminUser } from '@/lib/web3';
 
 export const dynamic = 'force-dynamic';
@@ -106,7 +106,7 @@ async function addEvidence(req: NextRequest, user: AuthUser, context?: { params:
       });
     });
 
-    return NextResponse.json({ dispute: deepSerialize(updated) });
+    return NextResponse.json({ dispute: deepSerialize(shapeDisputeForViewer(updated, user)) });
   } catch (error) {
     console.error('Error adding dispute evidence:', error);
 

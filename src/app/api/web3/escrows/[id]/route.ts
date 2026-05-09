@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth, type AuthUser } from '@/lib/auth';
 import { autoReleaseDueEscrows } from '@/lib/escrow-auto-release';
 import { deepSerialize } from '@/lib/serialize';
+import { shapeEscrowDealForViewer } from '@/lib/escrow-disputes';
 import {
   executeAnchorEscrowDemoAction,
   isAnchorEscrowDemoAction,
@@ -119,7 +120,7 @@ async function getEscrow(_req: NextRequest, user: AuthUser, context?: { params: 
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  return NextResponse.json({ deal: deepSerialize(deal) });
+  return NextResponse.json({ deal: deepSerialize(shapeEscrowDealForViewer(deal, user)) });
 }
 
 async function updateEscrow(req: NextRequest, user: AuthUser, context?: { params: { id: string } }) {
@@ -488,7 +489,7 @@ async function updateEscrow(req: NextRequest, user: AuthUser, context?: { params
       return refreshed || updated;
     });
 
-    return NextResponse.json({ deal: deepSerialize(updatedDeal) });
+    return NextResponse.json({ deal: deepSerialize(shapeEscrowDealForViewer(updatedDeal, user)) });
   } catch (error) {
     console.error('Error updating escrow:', error);
 
