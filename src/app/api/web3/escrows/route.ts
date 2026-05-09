@@ -33,6 +33,18 @@ const dealInclude = {
     orderBy: { createdAt: 'desc' as const },
     take: 25,
   },
+  dispute: {
+    include: {
+      openedBy: { select: { id: true, username: true, email: true } },
+      buyer: { select: { id: true, username: true, email: true } },
+      seller: { select: { id: true, username: true, email: true } },
+      resolvedBy: { select: { id: true, username: true, email: true } },
+      evidence: {
+        include: { uploadedBy: { select: { id: true, username: true, email: true } } },
+        orderBy: { createdAt: 'desc' as const },
+      },
+    },
+  },
 };
 
 function parseOptionalAdId(value: string | null): bigint | undefined {
