@@ -22,15 +22,16 @@ export function buildCloakPrivacyMetadata(input: CloakPrivacyInput = {}) {
   const buyerRequested = Boolean(input.buyerRequested);
 
   return {
+    version: 1,
     enabled: sellerRequested || buyerRequested,
     sellerRequested,
     buyerRequested,
     provider: 'cloak',
     mode: 'shielded_utxo_intent',
     settlement: 'p2ploot_anchor_escrow_with_cloak_privacy_intent',
-    feeModel: CLOAK_PRIVACY_FEE_MODEL,
-    devnet: CLOAK_DEVNET_CONFIG,
-    disclosure:
-      'Privacy intent is recorded for the marketplace flow. Full shielded settlement is isolated behind the Cloak adapter path.',
+    feeModel: {
+      fixedFeeSol: CLOAK_PRIVACY_FEE_MODEL.fixedFeeSol,
+      variableFeeBps: CLOAK_PRIVACY_FEE_MODEL.variableFeeBps,
+    },
   };
 }
