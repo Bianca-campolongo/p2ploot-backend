@@ -8,6 +8,13 @@ const SMOKE_RELEASE_AD_TITLE =
   process.env.SMOKE_RELEASE_AD_TITLE || "Smoke Web3 Release QA";
 const SMOKE_REFUND_AD_TITLE =
   process.env.SMOKE_REFUND_AD_TITLE || "Smoke Web3 Refund QA";
+const SMOKE_CURRENCY_SYMBOL = (
+  process.env.SMOKE_CURRENCY_SYMBOL || "SOL"
+).toUpperCase();
+const parsedSmokeAdPrice = Number(process.env.SMOKE_AD_PRICE || "10");
+const SMOKE_AD_PRICE = Number.isFinite(parsedSmokeAdPrice)
+  ? parsedSmokeAdPrice
+  : 10;
 
 function assertAllowedDatabase() {
   const rawUrl = process.env.DATABASE_URL;
@@ -60,6 +67,9 @@ async function ensureSmokeAd(prisma, ownerId, title) {
       where: { id: existing.id },
       data: {
         status: "active",
+        price: SMOKE_AD_PRICE,
+        currency: SMOKE_CURRENCY_SYMBOL,
+        description: `QA seed for remote Web3 devnet smoke using ${SMOKE_CURRENCY_SYMBOL}.`,
         expiresAt,
         lastRenewedAt: new Date(),
         approvedAt: new Date(),
@@ -72,9 +82,9 @@ async function ensureSmokeAd(prisma, ownerId, title) {
     data: {
       userId: ownerId,
       title,
-      description: "QA seed for remote Web3 devnet smoke.",
-      price: 10,
-      currency: "SOL",
+      description: `QA seed for remote Web3 devnet smoke using ${SMOKE_CURRENCY_SYMBOL}.`,
+      price: SMOKE_AD_PRICE,
+      currency: SMOKE_CURRENCY_SYMBOL,
       game: "Legend of Ymir",
       server: "QA",
       region: "Global",
@@ -121,6 +131,8 @@ async function main() {
         devnetAdId: devnetAd.id.toString(),
         releaseAdId: releaseAd.id.toString(),
         refundAdId: refundAd.id.toString(),
+        currencySymbol: SMOKE_CURRENCY_SYMBOL,
+        price: SMOKE_AD_PRICE,
       })
     );
   } finally {
