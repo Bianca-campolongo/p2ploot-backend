@@ -1,4 +1,11 @@
 const API_BASE = process.env.API_BASE || 'http://localhost:6110';
+const SMOKE_CURRENCY_SYMBOL = (process.env.SMOKE_CURRENCY_SYMBOL || 'USDC').toUpperCase();
+const SMOKE_ASSET_MINTS = {
+  SOL: 'So11111111111111111111111111111111111111112',
+  USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  USDT: 'Es9vMFrzaCERmJfrF4H2FYD4jU7VvSksQ88BNTc1NfQ',
+};
+const SMOKE_ASSET_MINT = process.env.SMOKE_ASSET_MINT || SMOKE_ASSET_MINTS[SMOKE_CURRENCY_SYMBOL] || SMOKE_ASSET_MINTS.USDC;
 
 function assert(condition, message) {
   if (!condition) {
@@ -75,12 +82,14 @@ async function createEscrow(token, conversationId, amountUi) {
   const data = await request('POST', '/api/web3/escrows', {
     conversationId,
     network: 'devnet',
-    assetMint: 'So11111111111111111111111111111111111111112',
-    currencySymbol: 'USDC',
+    assetMint: SMOKE_ASSET_MINT,
+    currencySymbol: SMOKE_CURRENCY_SYMBOL,
     amountUi,
     amountRaw: String(Math.round(Number(amountUi) * 1_000_000)),
   }, token);
   assert(data.deal?.id, 'Missing escrow deal');
+  assert(data.deal.currencySymbol === SMOKE_CURRENCY_SYMBOL, `Escrow currency was ${data.deal.currencySymbol}, expected ${SMOKE_CURRENCY_SYMBOL}`);
+  assert(data.deal.assetMint === SMOKE_ASSET_MINT, `Escrow asset mint was ${data.deal.assetMint}, expected ${SMOKE_ASSET_MINT}`);
   return data.deal;
 }
 
@@ -172,10 +181,11 @@ async function main() {
   const reused = await request('POST', '/api/web3/escrows', {
     conversationId: refundConversationId,
     network: 'devnet',
-    currencySymbol: 'USDC',
+    currencySymbol: SMOKE_CURRENCY_SYMBOL,
     amountUi: '1000.00',
   }, seller.token);
   assert(reused.reused === true && reused.deal?.id === draftDeal.id, 'Draft escrow was not reused');
+  assert(reused.deal.currencySymbol === SMOKE_CURRENCY_SYMBOL, `Reused escrow currency was ${reused.deal.currencySymbol}, expected ${SMOKE_CURRENCY_SYMBOL}`);
 
   current = await patchEscrow(seller.token, draftDeal.id, 'cancel', {
     txSignature: tx('cancel'),
@@ -189,6 +199,8 @@ async function main() {
     cancelledDeal: draftDeal.id,
     releaseAdId,
     refundAdId,
+    currencySymbol: SMOKE_CURRENCY_SYMBOL,
+    assetMint: SMOKE_ASSET_MINT,
     apiBase: API_BASE,
   }, null, 2));
 }

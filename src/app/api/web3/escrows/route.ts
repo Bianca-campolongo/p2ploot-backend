@@ -5,6 +5,7 @@ import { requireAuth, type AuthUser } from '@/lib/auth';
 import { deepSerialize } from '@/lib/serialize';
 import { autoReleaseDueEscrows } from '@/lib/escrow-auto-release';
 import { buildCloakPrivacyMetadata } from '@/lib/cloak-privacy';
+import { getStablecoinMint, normalizeCurrencySymbol } from '@/lib/solana-stablecoins';
 import { shapeEscrowDealForViewer, shapeEscrowDealsForViewer } from '@/lib/escrow-disputes';
 import { ESCROW_TERMINAL_STATUSES, isAdminUser, normalizeSolanaNetwork } from '@/lib/web3';
 
@@ -146,8 +147,9 @@ async function createEscrow(req: NextRequest, user: AuthUser) {
       : null;
 
     const amountUi = body.amountUi !== undefined ? String(body.amountUi) : ad?.price?.toString();
-    const currencySymbol = body.currencySymbol || ad?.currency || 'USDC';
+    const currencySymbol = normalizeCurrencySymbol(body.currencySymbol || ad?.currency);
     const network = normalizeSolanaNetwork(body.network);
+    const assetMint = body.assetMint || getStablecoinMint(currencySymbol, network);
     const expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
     const platformFeeBps = Number(process.env.PLATFORM_FEE_BPS || 250);
     const bodyCloakPrivacy = body.metadata?.cloakPrivacy || {};
@@ -166,7 +168,7 @@ async function createEscrow(req: NextRequest, user: AuthUser) {
         chain: 'solana',
         network,
         programId: body.programId,
-        assetMint: body.assetMint,
+        assetMint,
         currencySymbol,
         amountRaw: body.amountRaw,
         amountUi,
@@ -204,6 +206,7 @@ async function createEscrow(req: NextRequest, user: AuthUser) {
             payload: {
               network,
               currencySymbol,
+              assetMint,
               amountUi,
               amountRaw: body.amountRaw,
               platformFeeBps,
