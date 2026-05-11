@@ -79,11 +79,48 @@ async function checkProgramDeployment(rpcUrl: string | undefined, programId: str
   }
 }
 
+async function checkRpcHealth(rpcUrl: string | undefined) {
+  if (!rpcUrl) {
+    return { checked: false, ok: false, latencyMs: null, slot: null, version: null };
+  }
+
+  const startedAt = Date.now();
+
+  try {
+    const connection = new Connection(rpcUrl, 'confirmed');
+    const [version, slot] = await withTimeout(
+      Promise.all([
+        connection.getVersion(),
+        connection.getSlot('confirmed'),
+      ]),
+      6_000
+    );
+
+    return {
+      checked: true,
+      ok: true,
+      latencyMs: Date.now() - startedAt,
+      slot,
+      version: version['solana-core'] || null,
+    };
+  } catch (error) {
+    return {
+      checked: true,
+      ok: false,
+      latencyMs: Date.now() - startedAt,
+      slot: null,
+      version: null,
+      error: error instanceof Error ? error.message : 'unknown_error',
+    };
+  }
+}
+
 export async function GET() {
   const network = normalizeSolanaNetwork(process.env.SOLANA_NETWORK);
   const programId = process.env.SOLANA_ESCROW_PROGRAM_ID || '';
   const programIdConfigured = configured(programId) && !PLACEHOLDER_PROGRAM_IDS.has(programId);
   const shouldCheckProgramDeployment = process.env.SOLANA_CHECK_PROGRAM_DEPLOYMENT !== 'false';
+  const rpcHealth = await checkRpcHealth(process.env.SOLANA_RPC_URL);
   const programDeployment = await checkProgramDeployment(
     process.env.SOLANA_RPC_URL,
     programId,
@@ -105,6 +142,9 @@ export async function GET() {
   }
   if (!configured(process.env.SOLANA_RPC_URL)) {
     blockers.push('solana_rpc_missing');
+  }
+  if (rpcHealth.checked && !rpcHealth.ok) {
+    blockers.push('solana_rpc_health_failed');
   }
   if (!programIdConfigured) {
     blockers.push('solana_escrow_program_id_missing_or_placeholder');
@@ -141,6 +181,7 @@ export async function GET() {
       network,
       rpcConfigured: configured(process.env.SOLANA_RPC_URL),
       rpcHost: rpcHost(process.env.SOLANA_RPC_URL),
+      rpcHealth,
       escrowProgramIdConfigured: programIdConfigured,
       escrowProgramDeployment: programDeployment,
       validateTxSignatures: validateSignatures,
