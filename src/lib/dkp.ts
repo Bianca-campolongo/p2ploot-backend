@@ -46,9 +46,7 @@ export async function applyDecay(tx: any, guildId: bigint, decayPercent: number,
 
     // Update individual balance
     // Using raw SQL to avoid precision issues and handle Decimal update correctly
-    await tx.$executeRawUnsafe(
-      `UPDATE guild_members SET dkp_balance = dkp_balance - ${decayAmount} WHERE guild_id = ${guildId} AND member_id = '${member.memberId}'`
-    );
+    await tx.$executeRaw`UPDATE guild_members SET dkp_balance = dkp_balance - ${decayAmount} WHERE guild_id = ${guildId} AND member_id = ${member.memberId}`;
   }
 
   // 2. Create Ledger Entries

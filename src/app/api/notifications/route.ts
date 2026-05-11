@@ -63,7 +63,29 @@ async function getUserNotifications(req: NextRequest, user: any) {
             select: { id: true, title: true, status: true }
         });
 
-        // 5. Guildas Expirando (< 7 dias)
+        // 5. Auditoria pediu prova da parte logada
+        const disputeEvidenceRequests = await prisma.escrowDispute.findMany({
+            where: {
+                OR: [
+                    { sellerId: user.id, status: 'awaiting_seller_evidence' },
+                    { buyerId: user.id, status: 'awaiting_buyer_evidence' }
+                ]
+            },
+            include: {
+                escrowDeal: {
+                    select: {
+                        id: true,
+                        adId: true,
+                        conversationId: true,
+                        ad: { select: { title: true } }
+                    }
+                }
+            },
+            orderBy: { updatedAt: 'desc' },
+            take: 10
+        });
+
+        // 6. Guildas Expirando (< 7 dias)
         const expiringGuilds = await prisma.guild.findMany({
             where: {
                 ownerId: user.id,
@@ -116,6 +138,19 @@ async function getUserNotifications(req: NextRequest, user: any) {
                 text: `🎫 Seu ticket "${ticket.title}" foi atualizado status: ${ticket.status}.`,
                 link: '/meu-perfil',
                 createdAt: now
+            });
+        });
+
+        disputeEvidenceRequests.forEach(dispute => {
+            const adTitle = dispute.escrowDeal?.ad?.title || 'compra';
+            const adId = dispute.escrowDeal?.adId?.toString();
+            const convId = dispute.escrowDeal?.conversationId;
+            notifications.push({
+                id: `user-dispute-evidence-${dispute.id}-${dispute.status}`,
+                type: 'dispute_evidence_request',
+                text: `Auditoria pediu provas na compra: ${adTitle}.`,
+                link: adId ? `/player-market?adId=${adId}${convId ? `&convId=${convId}` : ''}` : '/player-market',
+                createdAt: dispute.updatedAt
             });
         });
 

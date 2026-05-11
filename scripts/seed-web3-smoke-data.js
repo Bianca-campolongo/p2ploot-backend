@@ -3,6 +3,7 @@ const { PrismaClient } = require("@prisma/client");
 const ENABLED = process.env.DOKPLOY_WEB3_SMOKE_SEED === "true";
 const BUYER_EMAIL = process.env.SMOKE_BUYER_EMAIL || "player2@talon.com";
 const SELLER_EMAIL = process.env.SMOKE_SELLER_EMAIL || "player1@talon.com";
+const ADMIN_EMAIL = process.env.SMOKE_ADMIN_EMAIL || "admin@p2ploot.local";
 const SMOKE_AD_TITLE = process.env.SMOKE_AD_TITLE || "Smoke Web3 Devnet QA";
 const SMOKE_RELEASE_AD_TITLE =
   process.env.SMOKE_RELEASE_AD_TITLE || "Smoke Web3 Release QA";
@@ -46,6 +47,25 @@ async function upsertProfile(prisma, email, username) {
     create: {
       email,
       username,
+      primaryAuthMethod: "email",
+      credits: 10,
+    },
+  });
+}
+
+async function upsertAdminProfile(prisma, email) {
+  return prisma.profile.upsert({
+    where: { email },
+    update: {
+      username: "QA Admin",
+      role: "admin",
+      primaryAuthMethod: "email",
+      credits: 10,
+    },
+    create: {
+      email,
+      username: "QA Admin",
+      role: "admin",
       primaryAuthMethod: "email",
       credits: 10,
     },
@@ -111,6 +131,7 @@ async function main() {
   try {
     const seller = await upsertProfile(prisma, SELLER_EMAIL, "QA Seller");
     const buyer = await upsertProfile(prisma, BUYER_EMAIL, "QA Buyer");
+    const admin = await upsertAdminProfile(prisma, ADMIN_EMAIL);
     const devnetAd = await ensureSmokeAd(prisma, seller.id, SMOKE_AD_TITLE);
     const releaseAd = await ensureSmokeAd(
       prisma,
@@ -128,6 +149,7 @@ async function main() {
         message: "[web3-smoke-seed] ready",
         buyerEmail: buyer.email,
         sellerEmail: seller.email,
+        adminEmail: admin.email,
         devnetAdId: devnetAd.id.toString(),
         releaseAdId: releaseAd.id.toString(),
         refundAdId: refundAd.id.toString(),

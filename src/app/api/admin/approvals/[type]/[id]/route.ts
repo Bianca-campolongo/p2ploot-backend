@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requirePanel, AuthUser } from '@/lib/auth';
 
-const AD_CREATION_COST = 1;
+const AD_CREATION_COST = 0;
 const EVENT_CREATION_COST = 5;
 
 // POST /api/admin/approvals/[type]/[id]
@@ -78,7 +78,7 @@ async function handleMarketApproval(id: string, action: string, user: AuthUser, 
 
             // Refund Credits
             const profile = await tx.profile.findUnique({ where: { id: ad.userId } });
-            if (profile) {
+            if (profile && AD_CREATION_COST > 0) {
                 const newBalance = Number(profile.credits) + AD_CREATION_COST;
                 await tx.profile.update({
                     where: { id: ad.userId },
@@ -100,7 +100,7 @@ async function handleMarketApproval(id: string, action: string, user: AuthUser, 
 
             return updated;
         });
-        return NextResponse.json({ message: 'Rejected and refunded', data: { ...result, id: result.id.toString() } });
+        return NextResponse.json({ message: 'Rejected', data: { ...result, id: result.id.toString() } });
     }
 }
 

@@ -51,41 +51,46 @@ model Profile {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relações
-  walletLogins          WalletLogin[]
-  guildMembers          GuildMember[]
-  guildRequests         GuildRequest[]
-  guildsOwned           Guild[]                @relation("GuildOwner")
-  creditTransactions    CreditTransaction[]
-  creditRequests        CreditRequest[]
-  gameItems             GameItem[]
-  guildAuctions         GuildAuction[]         @relation("AuctionWinner")
-  guildBids             GuildBid[]
-  dkpLedger             GuildDkpLedger[]
-  messages              Message[]              @relation("MessageSender")
-  conversations         Conversation[]         @relation("ConversationBuyer")
-  conversations2        Conversation[]         @relation("ConversationSeller")
-  marketAds             MarketAd[]
-  adReports             AdReport[]
-  gameVotes             GameVote[]
-  characterShares       GuildCharacterShare[]  @relation("CharacterShareOwner")
-  characterShares2      GuildCharacterShare[]  @relation("CharacterSharePilot")
-  itemFavorites         UserItemFavorite[]
-  trustVotesCast        TrustVote[]            @relation("TrustVoter")
-  trustVotesReceived    TrustVote[]            @relation("TrustTarget")
-  creditRequestMessages CreditRequestMessage[]
-  supportTickets        SupportTicket[]
-  supportMessages       SupportTicketMessage[]
-  gameComments          GameComment[]
-  gameCommentVotes      GameCommentVote[]
-  eventsOrganized       Event[]                @relation("EventOrganizer")
-  eventsApproved        Event[]                @relation("EventApprover")
-  adsApproved           MarketAd[]             @relation("AdApprover")
-  web3Wallets           Web3Wallet[]
-  escrowDealsAsBuyer    EscrowDeal[]           @relation("EscrowBuyer")
-  escrowDealsAsSeller   EscrowDeal[]           @relation("EscrowSeller")
-  escrowDealsCreated    EscrowDeal[]           @relation("EscrowCreator")
-  escrowEvents          EscrowEvent[]          @relation("EscrowEventActor")
-  moderatorPermission   ModeratorPermission?
+  walletLogins           WalletLogin[]
+  guildMembers           GuildMember[]
+  guildRequests          GuildRequest[]
+  guildsOwned            Guild[]                 @relation("GuildOwner")
+  creditTransactions     CreditTransaction[]
+  creditRequests         CreditRequest[]
+  gameItems              GameItem[]
+  guildAuctions          GuildAuction[]          @relation("AuctionWinner")
+  guildBids              GuildBid[]
+  dkpLedger              GuildDkpLedger[]
+  messages               Message[]               @relation("MessageSender")
+  conversations          Conversation[]          @relation("ConversationBuyer")
+  conversations2         Conversation[]          @relation("ConversationSeller")
+  marketAds              MarketAd[]
+  adReports              AdReport[]
+  gameVotes              GameVote[]
+  characterShares        GuildCharacterShare[]   @relation("CharacterShareOwner")
+  characterShares2       GuildCharacterShare[]   @relation("CharacterSharePilot")
+  itemFavorites          UserItemFavorite[]
+  trustVotesCast         TrustVote[]             @relation("TrustVoter")
+  trustVotesReceived     TrustVote[]             @relation("TrustTarget")
+  creditRequestMessages  CreditRequestMessage[]
+  supportTickets         SupportTicket[]
+  supportMessages        SupportTicketMessage[]
+  gameComments           GameComment[]
+  gameCommentVotes       GameCommentVote[]
+  eventsOrganized        Event[]                 @relation("EventOrganizer")
+  eventsApproved         Event[]                 @relation("EventApprover")
+  adsApproved            MarketAd[]              @relation("AdApprover")
+  web3Wallets            Web3Wallet[]
+  escrowDealsAsBuyer     EscrowDeal[]            @relation("EscrowBuyer")
+  escrowDealsAsSeller    EscrowDeal[]            @relation("EscrowSeller")
+  escrowDealsCreated     EscrowDeal[]            @relation("EscrowCreator")
+  escrowEvents           EscrowEvent[]           @relation("EscrowEventActor")
+  escrowDisputesOpened   EscrowDispute[]         @relation("EscrowDisputeOpenedBy")
+  escrowDisputesAsBuyer  EscrowDispute[]         @relation("EscrowDisputeBuyer")
+  escrowDisputesAsSeller EscrowDispute[]         @relation("EscrowDisputeSeller")
+  escrowDisputesResolved EscrowDispute[]         @relation("EscrowDisputeResolvedBy")
+  escrowDisputeEvidence  EscrowDisputeEvidence[] @relation("EscrowDisputeEvidenceUploader")
+  moderatorPermission    ModeratorPermission?
 
   @@map("profiles")
 }
@@ -117,7 +122,7 @@ model Guild {
   ownerId      String? @map("owner_id") @db.Char(36)
 
   // Security
-  strikes      Int     @default(0)
+  strikes Int @default(0)
 
   // Créditos
   accessExpiresAt  DateTime? @map("access_expires_at")
@@ -181,11 +186,11 @@ model GuildMember {
 }
 
 model GuildRequest {
-  id        String   @id @default(uuid()) @db.Char(36)
-  guildId   BigInt   @map("guild_id")
-  userId    String   @map("user_id") @db.Char(36)
-  status    String   @default("pending") @db.VarChar(50)
-  
+  id      String @id @default(uuid()) @db.Char(36)
+  guildId BigInt @map("guild_id")
+  userId  String @map("user_id") @db.Char(36)
+  status  String @default("pending") @db.VarChar(50)
+
   // Application Data
   characterName String? @map("character_name") @db.VarChar(255)
   customValues  Json?   @default("{}") @map("custom_values") @db.Json
@@ -283,16 +288,16 @@ model GuildBid {
 }
 
 model GuildDkpEventsConfig {
-  id        String   @id @default(uuid()) @db.Char(36)
-  guildId   BigInt   @map("guild_id")
-  eventName String   @map("event_name") @db.VarChar(255)
+  id        String  @id @default(uuid()) @db.Char(36)
+  guildId   BigInt  @map("guild_id")
+  eventName String  @map("event_name") @db.VarChar(255)
   dkpAmount Decimal @default(0) @map("dkp_amount") @db.Decimal(10, 2)
-  
+
   // Recurrence
-  recurrence     String   @default("once") @db.VarChar(50) // 'once', 'daily', 'weekly', 'monthly'
-  recurrenceDays String?  @map("recurrence_days") @db.VarChar(255) // For weekly: "0,1,2", for monthly: "15"
-  eventTime      String?  @map("event_time") @db.VarChar(10) // HH:mm
-  
+  recurrence     String  @default("once") @db.VarChar(50) // 'once', 'daily', 'weekly', 'monthly'
+  recurrenceDays String? @map("recurrence_days") @db.VarChar(255) // For weekly: "0,1,2", for monthly: "15"
+  eventTime      String? @map("event_time") @db.VarChar(10) // HH:mm
+
   createdAt DateTime @default(now()) @map("created_at")
 
   guild  Guild            @relation(fields: [guildId], references: [id], onDelete: Cascade)
@@ -441,32 +446,32 @@ model CreditRequestMessage {
 }
 
 model MarketAd {
-  id            BigInt    @id @default(autoincrement())
-  userId        String    @map("user_id") @db.Char(36)
-  title         String    @db.VarChar(255)
-  description   String?   @db.Text
-  price         Decimal?  @db.Decimal(10, 2)
-  currency      String?   @db.VarChar(50)
-  game          String?   @db.VarChar(255)
-  server        String?   @db.VarChar(255)
-  region        String?   @db.VarChar(255)
-  type          String?   @db.VarChar(50)
-  status        String    @default("active") @db.VarChar(50)
-  imageUrl      String?   @map("image_url") @db.VarChar(500)
-  sellerAddress String?   @map("seller_address") @db.VarChar(255)
-  deliveryWindowHours Int  @default(24) @map("delivery_window_hours")
-  cloakSellerPrivacyEnabled Boolean @default(false) @map("cloak_seller_privacy_enabled")
-  expiresAt     DateTime? @map("expires_at")
-  lastRenewedAt DateTime? @map("last_renewed_at")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  id                        BigInt    @id @default(autoincrement())
+  userId                    String    @map("user_id") @db.Char(36)
+  title                     String    @db.VarChar(255)
+  description               String?   @db.Text
+  price                     Decimal?  @db.Decimal(10, 2)
+  currency                  String?   @db.VarChar(50)
+  game                      String?   @db.VarChar(255)
+  server                    String?   @db.VarChar(255)
+  region                    String?   @db.VarChar(255)
+  type                      String?   @db.VarChar(50)
+  status                    String    @default("active") @db.VarChar(50)
+  imageUrl                  String?   @map("image_url") @db.VarChar(500)
+  sellerAddress             String?   @map("seller_address") @db.VarChar(255)
+  deliveryWindowHours       Int       @default(24) @map("delivery_window_hours")
+  cloakSellerPrivacyEnabled Boolean   @default(false) @map("cloak_seller_privacy_enabled")
+  expiresAt                 DateTime? @map("expires_at")
+  lastRenewedAt             DateTime? @map("last_renewed_at")
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
 
-  approvedAt    DateTime? @map("approved_at")
-  approvedById  String?   @map("approved_by_id") @db.Char(36)
-  approvedBy    Profile?  @relation("AdApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt   DateTime? @map("approved_at")
+  approvedById String?   @map("approved_by_id") @db.Char(36)
+  approvedBy   Profile?  @relation("AdApprover", fields: [approvedById], references: [id], onDelete: SetNull)
 
-  user    Profile    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  reports AdReport[]
+  user        Profile      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reports     AdReport[]
   escrowDeals EscrowDeal[]
 
   @@index([userId])
@@ -509,11 +514,11 @@ model Message {
 }
 
 model Conversation {
-  id        String   @id @default(uuid()) @db.Char(36)
-  buyerId   String   @map("buyer_id") @db.Char(36)
-  sellerId  String   @map("seller_id") @db.Char(36)
-  adId      BigInt?  @map("ad_id")
-  
+  id       String  @id @default(uuid()) @db.Char(36)
+  buyerId  String  @map("buyer_id") @db.Char(36)
+  sellerId String  @map("seller_id") @db.Char(36)
+  adId     BigInt? @map("ad_id")
+
   // Trade Status
   buyerConfirmed  Boolean @default(false) @map("buyer_confirmed")
   sellerConfirmed Boolean @default(false) @map("seller_confirmed")
@@ -522,9 +527,9 @@ model Conversation {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  buyer    Profile   @relation("ConversationBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
-  seller   Profile   @relation("ConversationSeller", fields: [sellerId], references: [id], onDelete: Cascade)
-  messages Message[]
+  buyer       Profile      @relation("ConversationBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  seller      Profile      @relation("ConversationSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  messages    Message[]
   escrowDeals EscrowDeal[]
 
   @@index([buyerId])
@@ -588,12 +593,13 @@ model EscrowDeal {
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
-  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
-  ad           MarketAd?     @relation(fields: [adId], references: [id], onDelete: SetNull)
-  buyer        Profile       @relation("EscrowBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
-  seller       Profile       @relation("EscrowSeller", fields: [sellerId], references: [id], onDelete: Cascade)
-  createdBy    Profile       @relation("EscrowCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  conversation Conversation?  @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  ad           MarketAd?      @relation(fields: [adId], references: [id], onDelete: SetNull)
+  buyer        Profile        @relation("EscrowBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  seller       Profile        @relation("EscrowSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  createdBy    Profile        @relation("EscrowCreator", fields: [createdById], references: [id], onDelete: Cascade)
   events       EscrowEvent[]
+  dispute      EscrowDispute?
 
   @@index([conversationId, status])
   @@index([buyerId, status])
@@ -603,6 +609,60 @@ model EscrowDeal {
   @@index([depositTx])
   @@index([status])
   @@map("escrow_deals")
+}
+
+model EscrowDispute {
+  id           String    @id @default(uuid()) @db.Char(36)
+  escrowDealId String    @unique @map("escrow_deal_id") @db.Char(36)
+  openedById   String    @map("opened_by_id") @db.Char(36)
+  buyerId      String    @map("buyer_id") @db.Char(36)
+  sellerId     String    @map("seller_id") @db.Char(36)
+  status       String    @default("awaiting_seller_evidence") @db.VarChar(50)
+  reason       String?   @db.Text
+  adminNotes   String?   @map("admin_notes") @db.Text
+  resolution   String?   @db.VarChar(80)
+  resolvedById String?   @map("resolved_by_id") @db.Char(36)
+  resolvedAt   DateTime? @map("resolved_at")
+  metadata     Json?     @default("{}") @db.Json
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  escrowDeal EscrowDeal              @relation(fields: [escrowDealId], references: [id], onDelete: Cascade)
+  openedBy   Profile                 @relation("EscrowDisputeOpenedBy", fields: [openedById], references: [id], onDelete: Cascade)
+  buyer      Profile                 @relation("EscrowDisputeBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  seller     Profile                 @relation("EscrowDisputeSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  resolvedBy Profile?                @relation("EscrowDisputeResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+  evidence   EscrowDisputeEvidence[]
+
+  @@index([status, createdAt])
+  @@index([buyerId, status])
+  @@index([sellerId, status])
+  @@index([openedById])
+  @@index([resolvedById])
+  @@map("escrow_disputes")
+}
+
+model EscrowDisputeEvidence {
+  id           String   @id @default(uuid()) @db.Char(36)
+  disputeId    String   @map("dispute_id") @db.Char(36)
+  uploadedById String?  @map("uploaded_by_id") @db.Char(36)
+  kind         String   @db.VarChar(30)
+  label        String?  @db.VarChar(255)
+  url          String?  @db.VarChar(1000)
+  fileName     String?  @map("file_name") @db.VarChar(255)
+  mimeType     String?  @map("mime_type") @db.VarChar(255)
+  sizeBytes    Int?     @map("size_bytes")
+  text         String?  @db.Text
+  metadata     Json?    @default("{}") @db.Json
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  dispute    EscrowDispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  uploadedBy Profile?      @relation("EscrowDisputeEvidenceUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([disputeId, createdAt])
+  @@index([uploadedById])
+  @@index([kind])
+  @@map("escrow_dispute_evidence")
 }
 
 model EscrowEvent {
@@ -718,10 +778,10 @@ model GameComment {
   dislikes  Int      @default(0)
   createdAt DateTime @default(now()) @map("created_at")
 
-  game    Game           @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  user    Profile        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parent  GameComment?   @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  replies GameComment[]  @relation("CommentReplies")
+  game    Game              @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user    Profile           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent  GameComment?      @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies GameComment[]     @relation("CommentReplies")
   votes   GameCommentVote[]
 
   @@index([gameId])
@@ -782,17 +842,17 @@ model Event {
   prizePool   String?  @map("prize_pool") @db.VarChar(255) // Text field for flexibility (e.g. "$100", "1000 DKP")
   imageUrl    String?  @map("image_url") @db.VarChar(500)
   organizerId String   @map("organizer_id") @db.Char(36)
-  
-  status      String   @default("upcoming") @db.VarChar(50) // upcoming, ongoing, completed, cancelled
-  
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  approvedAt    DateTime? @map("approved_at")
-  approvedById  String?   @map("approved_by_id") @db.Char(36)
-  approvedBy    Profile?  @relation("EventApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  status String @default("upcoming") @db.VarChar(50) // upcoming, ongoing, completed, cancelled
 
-  organizer   Profile  @relation("EventOrganizer", fields: [organizerId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  approvedAt   DateTime? @map("approved_at")
+  approvedById String?   @map("approved_by_id") @db.Char(36)
+  approvedBy   Profile?  @relation("EventApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  organizer Profile @relation("EventOrganizer", fields: [organizerId], references: [id], onDelete: Cascade)
 
   @@index([organizerId])
   @@index([eventDate])

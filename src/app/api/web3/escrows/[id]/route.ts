@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth, type AuthUser } from '@/lib/auth';
 import { autoReleaseDueEscrows } from '@/lib/escrow-auto-release';
 import { deepSerialize } from '@/lib/serialize';
+import { shapeEscrowDealForViewer } from '@/lib/escrow-disputes';
 import {
   executeAnchorEscrowDemoAction,
   isAnchorEscrowDemoAction,
@@ -52,6 +53,18 @@ const dealInclude = {
   events: {
     orderBy: { createdAt: 'desc' as const },
     take: 25,
+  },
+  dispute: {
+    include: {
+      openedBy: { select: { id: true, username: true, email: true } },
+      buyer: { select: { id: true, username: true, email: true } },
+      seller: { select: { id: true, username: true, email: true } },
+      resolvedBy: { select: { id: true, username: true, email: true } },
+      evidence: {
+        include: { uploadedBy: { select: { id: true, username: true, email: true } } },
+        orderBy: { createdAt: 'desc' as const },
+      },
+    },
   },
 };
 
@@ -107,7 +120,7 @@ async function getEscrow(_req: NextRequest, user: AuthUser, context?: { params: 
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  return NextResponse.json({ deal: deepSerialize(deal) });
+  return NextResponse.json({ deal: deepSerialize(shapeEscrowDealForViewer(deal, user)) });
 }
 
 async function updateEscrow(req: NextRequest, user: AuthUser, context?: { params: { id: string } }) {
@@ -172,15 +185,18 @@ async function updateEscrow(req: NextRequest, user: AuthUser, context?: { params
         return NextResponse.json({ error: 'Only buyer can release escrow' }, { status: 403 });
       }
 
-      if (body.action === 'record_refund' && !admin && !isBuyer) {
-        return NextResponse.json({ error: 'Only buyer or admin can record refund' }, { status: 403 });
+      if (body.action === 'record_refund' && !admin && !isSeller) {
+        return NextResponse.json({ error: 'Only seller or admin can accept refund' }, { status: 403 });
       }
 
       const statusAllowed =
         (body.action === 'record_deposit' && ['draft', 'initialized'].includes(preflightDeal.status)) ||
         (body.action === 'seller_confirm' && preflightDeal.status === 'funded') ||
-        (body.action === 'release' && ['funded', 'seller_confirmed'].includes(preflightDeal.status)) ||
-        (body.action === 'record_refund' && ['funded', 'seller_confirmed', 'refund_requested', 'disputed'].includes(preflightDeal.status));
+        (body.action === 'release' && (['funded', 'seller_confirmed'].includes(preflightDeal.status) || (admin && preflightDeal.status === 'disputed'))) ||
+        (body.action === 'record_refund' && (
+          (isSeller && preflightDeal.status === 'refund_requested') ||
+          (admin && ['refund_requested', 'disputed'].includes(preflightDeal.status))
+        ));
 
       if (!statusAllowed) {
         return NextResponse.json(
@@ -296,7 +312,7 @@ async function updateEscrow(req: NextRequest, user: AuthUser, context?: { params
 
         case 'release': {
           if (!admin && !isBuyer) fail(403, 'Only buyer can release escrow');
-          if (!['funded', 'seller_confirmed'].includes(deal.status)) {
+          if (!['funded', 'seller_confirmed'].includes(deal.status) && !(admin && deal.status === 'disputed')) {
             fail(409, `Cannot release escrow from status ${deal.status}`);
           }
           txSignature = requireTxSignature(body.action, effectiveTxSignature);
@@ -311,21 +327,27 @@ async function updateEscrow(req: NextRequest, user: AuthUser, context?: { params
         }
 
         case 'request_refund': {
-          if (!admin && !isBuyer && !isSeller) fail(403, 'Only participants can request refund');
-          if (!['funded', 'seller_confirmed'].includes(deal.status)) {
+          if (!admin && !isBuyer) fail(403, 'Only buyer or admin can request refund');
+          if (deal.status !== 'funded') {
             fail(409, `Cannot request refund from status ${deal.status}`);
           }
           nextStatus = 'refund_requested';
           Object.assign(data, {
             status: nextStatus,
+            metadata: {
+              ...asRecord(deal.metadata),
+              refundRequestedAt: now.toISOString(),
+              refundRequestedById: user.id,
+              refundRequiresSellerDecision: true,
+            },
           });
           eventType = 'refund_requested';
           break;
         }
 
         case 'record_refund': {
-          if (!admin && !isBuyer) fail(403, 'Only buyer or admin can record refund');
-          if (!['funded', 'seller_confirmed', 'refund_requested', 'disputed'].includes(deal.status)) {
+          if (!admin && !isSeller) fail(403, 'Only seller or admin can accept refund');
+          if (!((isSeller && deal.status === 'refund_requested') || (admin && ['refund_requested', 'disputed'].includes(deal.status)))) {
             fail(409, `Cannot record refund from status ${deal.status}`);
           }
           txSignature = requireTxSignature(body.action, effectiveTxSignature);
@@ -415,10 +437,71 @@ async function updateEscrow(req: NextRequest, user: AuthUser, context?: { params
         }
       }
 
-      return updated;
+      if (body.action === 'open_dispute') {
+        const reason = String(body.message || body.payload?.reason || '').trim() || null;
+        const disputeType = String(body.payload?.disputeType || (deal.status === 'refund_requested' ? 'seller_refund_contest' : 'delivery_dispute'));
+
+        await tx.escrowDispute.upsert({
+          where: { escrowDealId: id },
+          update: {
+            status: 'awaiting_seller_evidence',
+            reason,
+            metadata: {
+              ...asRecord((updated as any).dispute?.metadata),
+              disputeType,
+              lastOpenedById: user.id,
+              lastOpenedAt: now.toISOString(),
+            },
+          },
+          create: {
+            escrowDealId: id,
+            openedById: user.id,
+            buyerId: deal.buyerId,
+            sellerId: deal.sellerId,
+            status: 'awaiting_seller_evidence',
+            reason,
+            metadata: {
+              openedFrom: 'escrow_action',
+              openedAt: now.toISOString(),
+              disputeType,
+            },
+          },
+        });
+      }
+
+      if (body.action === 'release') {
+        await tx.escrowDispute.updateMany({
+          where: { escrowDealId: id, status: { notIn: ['resolved_seller', 'resolved_buyer', 'closed'] } },
+          data: {
+            status: 'resolved_seller',
+            resolution: 'seller_paid',
+            resolvedById: user.id,
+            resolvedAt: now,
+          },
+        });
+      }
+
+      if (body.action === 'record_refund') {
+        await tx.escrowDispute.updateMany({
+          where: { escrowDealId: id, status: { notIn: ['resolved_seller', 'resolved_buyer', 'closed'] } },
+          data: {
+            status: 'resolved_buyer',
+            resolution: 'buyer_refunded',
+            resolvedById: user.id,
+            resolvedAt: now,
+          },
+        });
+      }
+
+      const refreshed = await tx.escrowDeal.findUnique({
+        where: { id },
+        include: dealInclude,
+      });
+
+      return refreshed || updated;
     });
 
-    return NextResponse.json({ deal: deepSerialize(updatedDeal) });
+    return NextResponse.json({ deal: deepSerialize(shapeEscrowDealForViewer(updatedDeal, user)) });
   } catch (error) {
     console.error('Error updating escrow:', error);
 

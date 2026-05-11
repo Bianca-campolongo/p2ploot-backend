@@ -6,6 +6,25 @@ import { applyDecay } from '@/lib/dkp';
 
 export const dynamic = 'force-dynamic';
 
+function parseDkpConfig(value: any) {
+    if (!value) return {};
+    if (typeof value === 'string') {
+        try {
+            return JSON.parse(value);
+        } catch {
+            return {};
+        }
+    }
+    return value;
+}
+
+function localDateKey(date: Date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 /**
  * Checks if DKP decay is due and applies it if necessary.
  * Uses dkp_config JSON field to store 'last_decay_at'.
@@ -53,12 +72,19 @@ async function applyDkpDecayIfNeeded(guild: any) {
         }
     }
 
+    const periodKey = `${interval || 'weekly'}:${day}:${decayTime}:${localDateKey(scheduledTime)}`;
+
     // If never decayed before, just initialize the tracker so it waits for the NEXT scheduled time
     // This prevents an immediate double-trigger for a past period right after configuration.
     if (!lastDecayAt) {
         console.log(`[DECAY] Initializing automatic decay tracking for guild ${guild.id}`);
         try {
-            const newConfig = { ...dkpConfig, last_decay_at: new Date().toISOString() };
+            const newConfig = {
+                ...dkpConfig,
+                last_decay_at: new Date().toISOString(),
+                last_decay_scheduled_at: scheduledTime.toISOString(),
+                last_decay_period_key: periodKey,
+            };
             await prisma.guild.update({
                 where: { id: guild.id },
                 data: { dkpConfig: newConfig }
@@ -75,10 +101,23 @@ async function applyDkpDecayIfNeeded(guild: any) {
         console.log(`[DECAY] Triggering automatic decay for guild ${guild.id}`);
         try {
             await prisma.$transaction(async (tx) => {
+                const lockedRows = await tx.$queryRaw<any[]>`SELECT dkp_config FROM guilds WHERE id = ${guild.id} FOR UPDATE`;
+                const lockedConfig = parseDkpConfig(lockedRows?.[0]?.dkp_config);
+
+                if (lockedConfig.last_decay_period_key === periodKey) {
+                    guild.dkpConfig = lockedConfig;
+                    return;
+                }
+
                 await applyDecay(tx, guild.id, guild.dkpDecayPercent);
                 
                 // Update dkp_config metadata
-                const newConfig = { ...dkpConfig, last_decay_at: new Date().toISOString() };
+                const newConfig = {
+                    ...lockedConfig,
+                    last_decay_at: new Date().toISOString(),
+                    last_decay_scheduled_at: scheduledTime.toISOString(),
+                    last_decay_period_key: periodKey,
+                };
                 await tx.guild.update({
                     where: { id: guild.id },
                     data: { dkpConfig: newConfig }

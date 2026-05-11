@@ -41,16 +41,38 @@ async function handleUpload(req: NextRequest, user: any) {
             return NextResponse.json({ error: 'Nenhum arquivo enviado' }, { status: 400 });
         }
 
+        const purpose = String(formData.get('purpose') || 'image');
+        const isDisputeEvidence = purpose === 'dispute_evidence';
+
         // --- BEGIN SECURITY VALIDATION ---
 
         // 1. Validate File Size (Max 5MB)
-        const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+        const MAX_SIZE = isDisputeEvidence ? 50 * 1024 * 1024 : 5 * 1024 * 1024;
+        if (file.size > MAX_SIZE) {
+            const maxMb = Math.round(MAX_SIZE / (1024 * 1024));
+            return NextResponse.json({ error: `Arquivo muito grande. O tamanho maximo e ${maxMb}MB.` }, { status: 400 });
+        }
         if (file.size > MAX_SIZE) {
             return NextResponse.json({ error: 'Arquivo muito grande. O tamanho máximo é 5MB.' }, { status: 400 });
         }
 
         // 2. Validate MIME Type
-        const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+        const ALLOWED_TYPES = isDisputeEvidence
+            ? [
+                'image/jpeg',
+                'image/png',
+                'image/webp',
+                'image/gif',
+                'video/mp4',
+                'video/webm',
+                'video/quicktime',
+                'application/pdf',
+                'text/plain',
+              ]
+            : ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+        if (!ALLOWED_TYPES.includes(file.type)) {
+            return NextResponse.json({ error: 'Tipo de arquivo invalido para este upload.' }, { status: 400 });
+        }
         if (!ALLOWED_TYPES.includes(file.type)) {
             return NextResponse.json({ error: 'Tipo de arquivo inválido. Apenas JPG, PNG, WEBP e GIF são permitidos.' }, { status: 400 });
         }
@@ -64,7 +86,8 @@ async function handleUpload(req: NextRequest, user: any) {
         const filename = `${uniqueSuffix}-${safeName}`;
         
         // Pasta /images como requerido
-        const key = `images/${filename}`;
+        const keyPrefix = isDisputeEvidence ? 'evidence' : 'images';
+        const key = `${keyPrefix}/${filename}`;
 
         // Buffer file
         const buffer = Buffer.from(await file.arrayBuffer());
