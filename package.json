@@ -17,6 +17,7 @@
     "db:test": "node scripts/testar-conexao.js",
     "web3:status": "node scripts/check-web3-status.js",
     "smoke:web3": "node scripts/smoke-web3.js",
+    "smoke:web3:tether": "node scripts/smoke-web3-tether.js",
     "smoke:web3:devnet": "node scripts/smoke-web3-devnet.js"
   },
   "dependencies": {
