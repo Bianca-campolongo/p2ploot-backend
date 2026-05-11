@@ -14,6 +14,10 @@ async function main() {
   if (!data?.readiness?.testDeployUsable) {
     process.exitCode = 1;
   }
+
+  if (data?.solana?.rpcConfigured && !data?.solana?.rpcHealth?.ok) {
+    process.exitCode = 1;
+  }
 }
 
 main().catch((error) => {
