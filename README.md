@@ -121,6 +121,8 @@ Documentação complementar na monorepo: `docs/hackathon-superteam/CLOAK_PRIVACY
 
 **O conceito original, regras de negócio e o ecossistema P2P Loot (já ativo e em produção) são de propriedade intelectual exclusiva de Bianca Campolongo.**
 
+O código versionado neste repositório (incluindo contribuições da comunidade técnica) está licenciado sob a **Apache License 2.0**. O texto completo está na raiz, no ficheiro [`LICENSE`](LICENSE); a referência oficial da licença é [apache.org/licenses/LICENSE-2.0](https://www.apache.org/licenses/LICENSE-2.0). Isto não afasta os direitos de propriedade intelectual sobre o conceito, marca e ecossistema de negócio descritos acima.
+
 Aos engenheiros e colaboradores que estão ingressando para auxiliar na **integração de Blockchain** ou em futuras melhorias da nossa API: **sejam bem-vindos(as) ao time!**
 
 * A ideia base e regras pré-existentes do produto não podem ser reivindicadas. Porém, as novas implementações de código que vocês produzirem (como os smart contracts e a API Web3) poderão ter os direitos autorais sobre a codificação reconhecidos conforme alinhamento da equipe de desenvolvimento.
