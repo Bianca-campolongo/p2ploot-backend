@@ -2,6 +2,10 @@
 
 Este é o repositório do backend do P2P Loot. Estruturado usando Next.js 14, atua primordialmente como a API da nossa infraestrutura, com interações baseadas em banco de dados utilizando Prisma.
 
+Link do frontend: [Link](https://github.com/Bianca-campolongo/p2ploot-frontend)
+
+Link da branch de desenvolvimento:[Link](https://github.com/Bianca-campolongo/p2ploot-frontend/tree/teste)
+
 ## Track Cloak (privacidade no marketplace)
 
 Informações esperadas pela track **Cloak** (problema, SDK, execução, IDs/links).
