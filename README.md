@@ -117,13 +117,7 @@ Documentação complementar na monorepo: `docs/hackathon-superteam/CLOAK_PRIVACY
 - `npm run build`: Gera o cliente atualizado no Prisma e build de produção para implantação.
 - `npm run smoke:cloak`: Smoke de privacy intent/metadata Cloak contra base local autorizada (`scripts/smoke-cloak-privacy.js`).
 
-## 🛡️ Colaboração e Propriedade Intelectual
-
-**O conceito original, regras de negócio e o ecossistema P2P Loot (já ativo e em produção) são de propriedade intelectual exclusiva de Bianca Campolongo.**
+## 🛡️ Licença
 
 O código versionado neste repositório (incluindo contribuições da comunidade técnica) está licenciado sob a **Apache License 2.0**. O texto completo está na raiz, no ficheiro [`LICENSE`](LICENSE); a referência oficial da licença é [apache.org/licenses/LICENSE-2.0](https://www.apache.org/licenses/LICENSE-2.0). Isto não afasta os direitos de propriedade intelectual sobre o conceito, marca e ecossistema de negócio descritos acima.
 
-Aos engenheiros e colaboradores que estão ingressando para auxiliar na **integração de Blockchain** ou em futuras melhorias da nossa API: **sejam bem-vindos(as) ao time!**
-
-* A ideia base e regras pré-existentes do produto não podem ser reivindicadas. Porém, as novas implementações de código que vocês produzirem (como os smart contracts e a API Web3) poderão ter os direitos autorais sobre a codificação reconhecidos conforme alinhamento da equipe de desenvolvimento.
-* Durante as implementações, lembrem-se de nunca subir arquivos com chaves sensíveis ao repositório (como o seu `.env`) e manter o padrão para garantir estabilidade das nossas integrações.
